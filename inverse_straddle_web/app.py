@@ -79,9 +79,24 @@ def inverse_1sd_and_range_prob(
 st.set_page_config(page_title="Range probability", layout="centered")
 st.title("Range odds — will the stock finish inside your strikes?")
 
+# Practical guide: read IV from the ATM strike on your broker’s option chain (same expiry as your trade).
+ATM_IV_GUIDE_URL = "https://en.wikipedia.org/wiki/Option_chain"
+ATM_IV_GUIDE_TITLE = (
+    "How to find ATM IV: open the option chain for your symbol and expiry, "
+    "then use implied volatility at the strike closest to spot or futures (ATM)."
+)
+
 col_a, col_b = st.columns(2)
 with col_a:
-    atm_iv = st.number_input("ATM IV (% or decimal)", value=14.0, format="%.4f")
+    st.markdown(
+        f'**ATM IV** (% or decimal) [?]({ATM_IV_GUIDE_URL} "{ATM_IV_GUIDE_TITLE}")'
+    )
+    atm_iv = st.number_input(
+        "ATM IV (% or decimal)",
+        value=14.0,
+        format="%.4f",
+        label_visibility="collapsed",
+    )
     futures_price = st.number_input("Futures price", value=24200.0, format="%.2f")
     dte_days = st.number_input("Days to expiry", min_value=1, value=3, step=1)
 with col_b:
