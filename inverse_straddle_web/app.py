@@ -145,8 +145,8 @@ if st.button("Calculate", type="primary"):
         st.markdown(
             f"<div style='margin-top:0.75rem;line-height:1.85;'>"
             f"<p style='font-size:2rem;margin:0 0 0.5rem 0;font-weight:700;'>{pct:.2f}% chance</p>"
-            f"<p style='margin:0.4rem 0;font-size:1.1rem;'>to close between"
-            f"<strong>{strike_1:,.2f}</strong> &nbsp;and&nbsp; <strong>{strike_2:,.2f}</strong></p>"
+            f"<p style='margin:0.4rem 0;font-size:1.1rem;'>to close between "
+            f"<strong>{strike_1:,.2f}</strong> &nbsp;and&nbsp; <strong> {strike_2:,.2f}</strong></p>"
             f"<p style='margin:0.4rem 0;color:#666;font-size:1rem;'> On {expiry_str}</p>"
             f"</div>",
             unsafe_allow_html=True,
