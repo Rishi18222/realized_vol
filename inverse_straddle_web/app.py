@@ -92,7 +92,7 @@ def _atm_iv_guide_dialog() -> None:
         "<ol style='margin-bottom:1rem;padding-left:1.35rem;'>"
         "<li>Open an <strong>option chain</strong> (broker or official NSE).</li>"
         "<li>Select your <strong>stock</strong> and <strong>expiry date</strong>.</li>"
-        "<li>Read IV at <strong>ATM</strong>: the strike column nearest the current spot/futures.</li>"
+        "<li>Read IV columnat <strong>ATM</strong>: the strike column nearest the current stock price.</li>"
         "</ol>"
         "<p>Use the official NSE page below when you prefer the exchange site.</p>"
         "</div>",
