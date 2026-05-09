@@ -8,6 +8,7 @@ Static (no Python): open index.html in a browser or upload to GitHub Pages / Net
 """
 
 import math
+from datetime import date, timedelta
 
 import streamlit as st
 
@@ -139,8 +140,11 @@ if st.button("Calculate", type="primary"):
             annual_days=int(annual_days),
         )
         pct = 100.0 * float(out["probability_between_strikes"])
+        expiry_on = date.today() + timedelta(days=int(dte_days))
+        expiry_str = expiry_on.strftime("%d %B %Y")
         st.markdown(
-            f"**Probability that the stock ends between {strike_1:,.2f} and {strike_2:,.2f} is {pct:.2f}%.**"
+            f"**Probability that the stock closes between {strike_1:,.2f} and {strike_2:,.2f} "
+            f"on {expiry_str} is {pct:.2f}%.**"
         )
     except ValueError as e:
         st.error(str(e))
