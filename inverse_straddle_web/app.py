@@ -106,7 +106,7 @@ def _atm_iv_guide_dialog() -> None:
     )
 
 
-st.title("Range odds — will the stock finish inside your strikes?")
+st.title("Will the stock finish inside your price range?")
 
 if st.button("How to find ATM IV — open guide", key="atm_iv_guide_btn", type="secondary"):
     _atm_iv_guide_dialog()
@@ -120,11 +120,11 @@ with col_a:
         format="%.4f",
         label_visibility="collapsed",
     )
-    futures_price = st.number_input("Futures price", value=24200.0, format="%.2f")
-    dte_days = st.number_input("Days to expiry", min_value=1, value=3, step=1)
+    futures_price = st.number_input("Stock Price", value=24200.0, format="%.2f")
+    dte_days = st.number_input("Days from today", min_value=1, value=3, step=1)
 with col_b:
-    strike_1 = st.number_input("Strike 1", value=23100.0, format="%.2f")
-    strike_2 = st.number_input("Strike 2", value=23500.0, format="%.2f")
+    strike_1 = st.number_input("Lower Price", value=23100.0, format="%.2f")
+    strike_2 = st.number_input("Upper Price", value=23500.0, format="%.2f")
     model = st.selectbox("Model", ["lognormal", "normal"], index=0)
     annual_days = st.selectbox("Annual days", [252, 365], index=0)
 
