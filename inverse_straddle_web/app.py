@@ -77,20 +77,42 @@ def inverse_1sd_and_range_prob(
 
 
 st.set_page_config(page_title="Range probability", layout="centered")
+
+ATM_IV_GUIDE_URL = "https://www.nseindia.com/option-chain"
+
+
+@st.dialog("How to find ATM IV", width="large")
+def _atm_iv_guide_dialog() -> None:
+    """Large, readable popup with steps and web link."""
+    st.markdown(
+        '<div style="font-size:1.35rem;line-height:1.75;">'
+        '<p style="margin-top:0;"><strong>ATM IV</strong> is the implied volatility at the strike '
+        "closest to <strong>spot or futures</strong>, for <strong>the expiry you&apos;re trading</strong>.</p>"
+        "<ol style='margin-bottom:1rem;padding-left:1.35rem;'>"
+        "<li>Open an <strong>option chain</strong> (broker or official NSE).</li>"
+        "<li>Select your <strong>underlying</strong> and <strong>expiry date</strong>.</li>"
+        "<li>Read IV at <strong>ATM</strong>: the strike column nearest the current spot/futures.</li>"
+        "</ol>"
+        "<p>Use the official NSE page below when you prefer the exchange site.</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.link_button(
+        "Open NSE option chain in browser →",
+        ATM_IV_GUIDE_URL,
+        use_container_width=True,
+        type="primary",
+    )
+
+
 st.title("Range odds — will the stock finish inside your strikes?")
 
-# Practical guide: read IV from the ATM strike on your broker’s option chain (same expiry as your trade).
-ATM_IV_GUIDE_URL = "https://en.wikipedia.org/wiki/Option_chain"
-ATM_IV_GUIDE_TITLE = (
-    "How to find ATM IV: open the option chain for your symbol and expiry, "
-    "then use implied volatility at the strike closest to spot or futures (ATM)."
-)
+if st.button("How to find ATM IV — open guide", key="atm_iv_guide_btn", type="secondary"):
+    _atm_iv_guide_dialog()
 
 col_a, col_b = st.columns(2)
 with col_a:
-    st.markdown(
-        f'**ATM IV** (% or decimal) [?]({ATM_IV_GUIDE_URL} "{ATM_IV_GUIDE_TITLE}")'
-    )
+    st.caption("ATM IV (% or decimal)")
     atm_iv = st.number_input(
         "ATM IV (% or decimal)",
         value=14.0,
