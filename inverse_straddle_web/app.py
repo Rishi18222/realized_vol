@@ -76,12 +76,8 @@ def inverse_1sd_and_range_prob(
     }
 
 
-st.set_page_config(page_title="Inverse straddle / 1-SD calculator", layout="centered")
-st.title("Inverse 1-SD calculator + range probability")
-st.markdown(
-    "From **ATM IV**, **futures**, and **DTE**, computes implied ±1σ strikes (lognormal or normal model) "
-    "and **P(lower strike ≤ ST ≤ upper strike)** at expiry."
-)
+st.set_page_config(page_title="Range probability", layout="centered")
+st.title("Range odds — will the stock finish inside your strikes?")
 
 col_a, col_b = st.columns(2)
 with col_a:
@@ -105,18 +101,9 @@ if st.button("Calculate", type="primary"):
             model=model,
             annual_days=int(annual_days),
         )
-        st.subheader("Results")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("1σ lower strike", f"{out['one_sd_lower_strike']:.2f}")
-        c2.metric("1σ upper strike", f"{out['one_sd_upper_strike']:.2f}")
-        c3.metric(
-            "P(range)",
-            f"{100 * out['probability_between_strikes']:.2f}%",
-            help=f"Between {out['range_low_strike']:.2f} and {out['range_high_strike']:.2f}",
-        )
-        st.caption(
-            f"σ√T = {out['sigma_sqrt_t']:.6f} | T = {out['time_to_expiry_years']:.6f} years | "
-            f"IV (decimal) = {out['atm_iv_decimal']:.6f} | model = {out['model']}"
+        pct = 100.0 * float(out["probability_between_strikes"])
+        st.markdown(
+            f"**Probability that the stock ends between {strike_1:,.2f} and {strike_2:,.2f} is {pct:.2f}%.**"
         )
     except ValueError as e:
         st.error(str(e))
