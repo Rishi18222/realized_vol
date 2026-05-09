@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inverse 1-SD calculator + range probability</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; max-width: 520px; margin: 1.5rem auto; padding: 0 1rem; }
+    label { display: block; margin-top: 0.75rem; font-size: 0.9rem; }
+    input, select { width: 100%; padding: 0.4rem; margin-top: 0.25rem; box-sizing: border-box; }
+    button { margin-top: 1rem; padding: 0.5rem 1rem; cursor: pointer; }
+    .out { margin-top: 1.25rem; padding: 1rem; background: #f4f4f5; border-radius: 8px; }
+    .out p { margin: 0.35rem 0; }
+    h1 { font-size: 1.25rem; }
+    .hint { color: #555; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>Inverse 1-SD calculator + range probability</h1>
+  <p class="hint">Same logic as <code>inverse_straddle_prob.ipynb</code>. Host this file on any static host (GitHub Pages, Netlify, S3).</p>
+
+  <label>ATM IV (14 = 14% or 0.14)</label>
+  <input type="number" id="atm_iv" value="14" step="0.01" />
+
+  <label>Futures price</label>
+  <input type="number" id="futures" value="24200" step="0.01" />
+
+  <label>Days to expiry</label>
+  <input type="number" id="dte" value="3" min="1" step="1" />
+
+  <label>Strike 1</label>
+  <input type="number" id="k1" value="23100" step="0.01" />
+
+  <label>Strike 2</label>
+  <input type="number" id="k2" value="23500" step="0.01" />
+
+  <label>Model</label>
+  <select id="model">
+    <option value="lognormal" selected>lognormal</option>
+    <option value="normal">normal</option>
+  </select>
+
+  <label>Annual days</label>
+  <select id="annual">
+    <option value="252" selected>252</option>
+    <option value="365">365</option>
+  </select>
+
+  <button type="button" id="go">Calculate</button>
+
+  <div class="out" id="out" hidden></div>
+
+  <script>
+    /** Standard normal CDF approximation (Hull-style) */
+    function normCDF(x) {
+      const a1 = 0.319381530, a2 = -0.356563782, a3 = 1.781477937;
+      const a4 = -1.821255978, a5 = 1.330274429;
+      const p = 0.2316419;
+      const c = 0.39894228;
+      if (x >= 8.0) return 1;
+      if (x <= -8.0) return 0;
+      const k = 1 / (1 + Math.abs(x) * p);
+      const n = c * Math.exp(-0.5 * x * x) * k *
+        (((((a5 * k + a4) * k + a3) * k + a2) * k + a1) * k);
+      return x > 0 ? 1 - n : n;
+    }
+
+    function calculate() {
+      let iv = parseFloat(document.getElementById('atm_iv').value);
+      const F = parseFloat(document.getElementById('futures').value);
+      const dte = parseInt(document.getElementById('dte').value, 10);
+      const k1 = parseFloat(document.getElementById('k1').value);
+      const k2 = parseFloat(document.getElementById('k2').value);
+      const model = document.getElementById('model').value;
+      const annualDays = parseInt(document.getElementById('annual').value, 10);
+      const out = document.getElementById('out');
+
+      try {
+        if (!(dte > 0) || !(F > 0)) throw new Error('Futures must be > 0 and DTE > 0');
+        if (!(iv > 0)) throw new Error('ATM IV must be > 0');
+        if (iv > 1) iv = iv / 100;
+
+        const T = dte / annualDays;
+        const sigmaT = iv * Math.sqrt(T);
+        const kLow = Math.min(k1, k2);
+        const kHigh = Math.max(k1, k2);
+
+        let lower1, upper1, prob;
+
+        if (model === 'normal') {
+          const stdP = F * sigmaT;
+          lower1 = F - stdP;
+          upper1 = F + stdP;
+          prob = normCDF((kHigh - F) / stdP) - normCDF((kLow - F) / stdP);
+        } else {
+          if (kLow <= 0) throw new Error('Strikes must be > 0 for lognormal');
+          lower1 = F * Math.exp(-sigmaT);
+          upper1 = F * Math.exp(sigmaT);
+          const mu = -0.5 * sigmaT * sigmaT;
+          const zLow = (Math.log(kLow / F) - mu) / sigmaT;
+          const zHigh = (Math.log(kHigh / F) - mu) / sigmaT;
+          prob = normCDF(zHigh) - normCDF(zLow);
+        }
+
+        out.hidden = false;
+        out.innerHTML =
+          '<p><strong>1σ implied range:</strong> ' + lower1.toFixed(2) + ' … ' + upper1.toFixed(2) + '</p>' +
+          '<p><strong>P(' + kLow.toFixed(2) + ' ≤ S_T ≤ ' + kHigh.toFixed(2) + '):</strong> ' + (100 * prob).toFixed(2) + '%</p>' +
+          '<p class="hint">σ√T=' + sigmaT.toFixed(6) + ' | T=' + T.toFixed(6) + ' y | IV=' + iv.toFixed(6) + ' | model=' + model + '</p>';
+      } catch (e) {
+        out.hidden = false;
+        out.innerHTML = '<p style="color:#b91c1c"><strong>Error:</strong> ' + e.message + '</p>';
+      }
+    }
+
+    document.getElementById('go').addEventListener('click', calculate);
+  </script>
+</body>
+</html>
