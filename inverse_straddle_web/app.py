@@ -143,8 +143,13 @@ if st.button("Calculate", type="primary"):
         expiry_on = date.today() + timedelta(days=int(dte_days))
         expiry_str = expiry_on.strftime("%d %B %Y")
         st.markdown(
-            f"**Probability that the stock closes between {strike_1:,.2f} and {strike_2:,.2f} "
-            f"on {expiry_str} is {pct:.2f}%.**"
+            f"<div style='margin-top:0.75rem;line-height:1.85;'>"
+            f"<p style='font-size:2rem;margin:0 0 0.5rem 0;font-weight:700;'>{pct:.2f}%</p>"
+            f"<p style='margin:0.4rem 0;font-size:1.1rem;'>Between "
+            f"<strong>{strike_1:,.2f}</strong> &nbsp;and&nbsp; <strong>{strike_2:,.2f}</strong></p>"
+            f"<p style='margin:0.4rem 0;color:#666;font-size:1rem;'>{expiry_str}</p>"
+            f"</div>",
+            unsafe_allow_html=True,
         )
     except ValueError as e:
         st.error(str(e))
