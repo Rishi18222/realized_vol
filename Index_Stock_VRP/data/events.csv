@@ -1,0 +1,27 @@
+symbol,date,event_type,note
+HDFCBANK,2026-04-19,earnings,Q4 FY26 typical window
+HDFCBANK,2026-07-19,earnings,Q1 FY27 typical window
+RELIANCE,2026-04-21,earnings,Q4 FY26 typical window
+RELIANCE,2026-07-21,earnings,Q1 FY27 typical window
+ICICIBANK,2026-04-25,earnings,Q4 FY26 typical window
+ICICIBANK,2026-07-25,earnings,Q1 FY27 typical window
+INFY,2026-04-17,earnings,Q4 FY26 typical window
+INFY,2026-07-17,earnings,Q1 FY27 typical window
+TCS,2026-04-10,earnings,Q4 FY26 typical window
+TCS,2026-07-10,earnings,Q1 FY27 typical window
+ITC,2026-05-15,earnings,Q4 FY26 typical window
+ITC,2026-08-01,earnings,Q1 FY27 typical window
+BHARTIARTL,2026-05-16,earnings,Q4 FY26 typical window
+BHARTIARTL,2026-08-05,earnings,Q1 FY27 typical window
+LT,2026-05-08,earnings,Q4 FY26 typical window
+LT,2026-07-24,earnings,Q1 FY27 typical window
+SBIN,2026-05-09,earnings,Q4 FY26 typical window
+SBIN,2026-08-08,earnings,Q1 FY27 typical window
+AXISBANK,2026-04-24,earnings,Q4 FY26 typical window
+AXISBANK,2026-07-24,earnings,Q1 FY27 typical window
+KOTAKBANK,2026-04-26,earnings,Q4 FY26 typical window
+KOTAKBANK,2026-07-26,earnings,Q1 FY27 typical window
+BAJFINANCE,2026-04-29,earnings,Q4 FY26 typical window
+BAJFINANCE,2026-07-22,earnings,Q1 FY27 typical window
+HDFCBANK,2026-06-20,dividend,illustrative corporate blackout
+RELIANCE,2026-08-14,dividend,illustrative corporate blackout
