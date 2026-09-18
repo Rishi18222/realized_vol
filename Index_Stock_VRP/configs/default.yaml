@@ -1,0 +1,187 @@
+{
+  "framework_version": 2,
+  "hedge_frequency": "1h",
+  "hedge_frequency_note": "Native Groww ATM panels and option OHLC are hourly bars 09:00-15:00. Delta hedges and BS Greeks use that clock. This is not a 5-minute Greek engine.",
+  "hedge_underlying": "spot_as_fut_proxy",
+  "index": "NIFTY",
+  "risk_free": 0.07,
+  "div_yield": 0.0,
+  "trading_days": 252,
+  "native_bars_per_day": 7,
+  "native_hours": [9, 10, 11, 12, 13, 14, 15],
+  "lookback_days": 180,
+  "target_capital": 2500000.0,
+  "books": {
+    "index": {
+      "roll_weekday": 0,
+      "roll_hour": 10,
+      "min_dte": 8,
+      "fill_hours": [10, 11, 12, 13, 14, 15],
+      "hedge_open_hour": 9,
+      "strike_step": 50.0,
+      "lot_fallback": 65
+    },
+    "stock": {
+      "min_dte": 21,
+      "max_dte": 45,
+      "exit_dte": 7,
+      "entry_weekday": 0,
+      "entry_hour": 10
+    }
+  },
+  "signal": {
+    "var_ratio_min": 1.0,
+    "z_min": 0.5,
+    "z_lookback_obs": 40,
+    "z_min_obs": 12,
+    "note": "Matched-tenor variance ratio IV^2/RV^2 and PIT z-score. Not IV minus 5-day RV in vol points."
+  },
+  "exits": {
+    "variance_budget": true,
+    "crush_frac": 0.3,
+    "running_hot_mult": 2.0,
+    "em_mult": 1.75,
+    "note": "Stop when path realized variance >= sold_var=sigma^2*T. Crush TP when remaining implied var <= crush_frac * sold_var. Running-hot when realized rate >= hot_mult * sold rate. Not an 80% RV exit."
+  },
+  "events": {
+    "mode": "event_in_life",
+    "note": "Exclude a name when an event date falls in [entry, expiry]. Not T-2/T+1."
+  },
+  "execution": {
+    "slippage_frac": 0.005,
+    "use_bid_ask": true
+  },
+  "costs": {
+    "stt_opt_sell": 0.0015,
+    "stamp_opt_buy": 0.00003,
+    "nse_opt": 0.0003553,
+    "sebi": 0.000001,
+    "gst": 0.18,
+    "fut_stt_sell": 0.0002,
+    "fut_stamp_buy": 0.00002,
+    "note": "Statutory F&O charges applied to mid premium, not the slipped fill."
+  },
+  "margins": {
+    "elm_index": 0.02,
+    "elm_stock": 0.035,
+    "span_short_pct_index": 0.1,
+    "span_short_pct_stock": 0.2,
+    "fut_pct_index": 0.11,
+    "fut_pct_stock": 0.2
+  },
+  "sizing": {
+    "stress_frac": 0.2,
+    "em_mult": 1.75,
+    "max_lots": 200
+  },
+  "liquid_fno": [
+    "HDFCBANK",
+    "RELIANCE",
+    "ICICIBANK",
+    "INFY",
+    "ITC",
+    "TCS",
+    "BHARTIARTL",
+    "LT",
+    "SBIN",
+    "AXISBANK",
+    "KOTAKBANK",
+    "BAJFINANCE"
+  ],
+  "default_lots": {
+    "NIFTY": 65,
+    "HDFCBANK": 550,
+    "RELIANCE": 500,
+    "ICICIBANK": 700,
+    "INFY": 400,
+    "ITC": 1600,
+    "TCS": 175,
+    "BHARTIARTL": 475,
+    "LT": 175,
+    "SBIN": 750,
+    "AXISBANK": 625,
+    "KOTAKBANK": 400,
+    "BAJFINANCE": 125
+  },
+  "default_steps": {
+    "NIFTY": 50.0,
+    "HDFCBANK": 5.0,
+    "RELIANCE": 10.0,
+    "ICICIBANK": 5.0,
+    "INFY": 5.0,
+    "ITC": 2.5,
+    "TCS": 20.0,
+    "BHARTIARTL": 5.0,
+    "LT": 20.0,
+    "SBIN": 5.0,
+    "AXISBANK": 5.0,
+    "KOTAKBANK": 10.0,
+    "BAJFINANCE": 20.0
+  },
+  "backtests": {
+    "A": {
+      "book": "index",
+      "hedge": false,
+      "signal": false,
+      "var_exit": false,
+      "ex_events": false,
+      "title": "Index weekly, unhedged, always-in"
+    },
+    "B": {
+      "book": "index",
+      "hedge": true,
+      "signal": false,
+      "var_exit": false,
+      "ex_events": false,
+      "title": "Index weekly, 1h delta-hedged, always-in"
+    },
+    "C": {
+      "book": "index",
+      "hedge": true,
+      "signal": true,
+      "var_exit": false,
+      "ex_events": false,
+      "title": "Index weekly, hedged, matched-tenor var-ratio filter"
+    },
+    "D": {
+      "book": "index",
+      "hedge": true,
+      "signal": true,
+      "var_exit": true,
+      "ex_events": false,
+      "title": "Index weekly, hedged, var-ratio + remaining-variance budget"
+    },
+    "E": {
+      "book": "stock",
+      "hedge": false,
+      "signal": false,
+      "var_exit": false,
+      "ex_events": false,
+      "title": "Stock monthly, unhedged, always-in"
+    },
+    "F": {
+      "book": "stock",
+      "hedge": true,
+      "signal": false,
+      "var_exit": false,
+      "ex_events": false,
+      "title": "Stock monthly, 1h delta-hedged, always-in"
+    },
+    "G": {
+      "book": "stock",
+      "hedge": true,
+      "signal": false,
+      "var_exit": false,
+      "ex_events": true,
+      "title": "Stock monthly, hedged, event-in-life exclusion"
+    },
+    "H": {
+      "book": "stock",
+      "hedge": true,
+      "signal": true,
+      "var_exit": true,
+      "ex_events": true,
+      "title": "Stock monthly, hedged, var-ratio + budget + event-in-life"
+    }
+  }
+}

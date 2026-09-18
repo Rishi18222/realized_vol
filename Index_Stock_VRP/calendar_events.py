@@ -1,4 +1,4 @@
-"""Earnings and corporate-event blackouts. Point-in-time; no lookahead."""
+"""Corporate-event exclusion: event date inside the option life [entry, expiry]."""
 
 from __future__ import annotations
 
@@ -18,27 +18,18 @@ def load_events(path: Path | None = None) -> pd.DataFrame:
     return df.sort_values(["symbol", "date"]).reset_index(drop=True)
 
 
-def blackout_window(event_date, *, before: int = C.EARNINGS_BLACKOUT_BEFORE, after: int = C.EARNINGS_BLACKOUT_AFTER):
-    d = pd.Timestamp(event_date).normalize()
-    return d - pd.Timedelta(days=before), d + pd.Timedelta(days=after)
-
-
-def events_in_span(events: pd.DataFrame, symbol: str, start, end) -> pd.DataFrame:
+def events_in_life(events: pd.DataFrame, symbol: str, entry, expiry) -> pd.DataFrame:
+    """Rows whose event date falls in [entry date, expiry date] inclusive."""
     if events is None or events.empty:
-        return events.iloc[0:0] if events is not None else pd.DataFrame()
-    a = pd.Timestamp(start).normalize()
-    b = pd.Timestamp(end).normalize()
+        return pd.DataFrame(columns=getattr(events, "columns", ["symbol", "date", "event_type"]))
+    a = pd.Timestamp(entry).normalize()
+    b = pd.Timestamp(expiry).normalize()
     hit = events[events["symbol"] == str(symbol).upper()].copy()
     if hit.empty:
         return hit
-    rows = []
-    for _, r in hit.iterrows():
-        lo, hi = blackout_window(r["date"])
-        if hi < a or lo > b:
-            continue
-        rows.append(r)
-    return pd.DataFrame(rows)
+    return hit[(hit["date"] >= a) & (hit["date"] <= b)].reset_index(drop=True)
 
 
-def blocked(events: pd.DataFrame, symbol: str, start, end) -> bool:
-    return not events_in_span(events, symbol, start, end).empty
+def blocked(events: pd.DataFrame, symbol: str, entry, expiry) -> bool:
+    """True when an event date sits inside the option's life. Not T−2/T+1."""
+    return not events_in_life(events, symbol, entry, expiry).empty

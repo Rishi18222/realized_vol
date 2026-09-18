@@ -1,4 +1,4 @@
-"""Unit tests for Index/Stock VRP: pricing, variance, sizing, engine A–H."""
+"""Unit tests for Index/Stock VRP framework v2."""
 
 from __future__ import annotations
 
@@ -9,14 +9,37 @@ import numpy as np
 import pandas as pd
 
 from Index_Stock_VRP import config as C
-from Index_Stock_VRP.calendar_events import blocked, load_events
+from Index_Stock_VRP import schemas
+from Index_Stock_VRP.calendar_events import blocked
 from Index_Stock_VRP.engine import Engine
 from Index_Stock_VRP.execution import fill_price, statutory_opt
 from Index_Stock_VRP.pricing import atm_forward_strike, forward_price, years_to
 from Index_Stock_VRP.sizing import lots_for_stress, stress_pnl_one_lot
 from Index_Stock_VRP.synthetic import SyntheticSource
 from Index_Stock_VRP.universe import constituents_asof, tradeable_asof
-from Index_Stock_VRP.variance import implied_variance, signal_ok, variance_exhausted
+from Index_Stock_VRP.variance import (
+    budget_exhausted,
+    crush_take,
+    pit_zscore,
+    signal_ok,
+    sold_variance,
+    variance_ratio,
+)
+
+
+class ConfigTests(unittest.TestCase):
+    def test_json_and_yaml_load(self):
+        self.assertEqual(C.FRAMEWORK_VERSION, 2)
+        self.assertEqual(C.HEDGE_FREQUENCY, "1h")
+        self.assertNotIn("VRP_MIN_PTS", dir(C))
+        self.assertFalse(hasattr(C, "VAR_EXIT_FRAC"))
+        self.assertFalse(hasattr(C, "EARNINGS_BLACKOUT_BEFORE"))
+        C.load_file(C.CONFIGS_DIR / "default.yaml")
+        self.assertEqual(C.HEDGE_FREQUENCY, "1h")
+        C.load_file(C.DEFAULT_CONFIG)
+
+    def test_backtests_present(self):
+        self.assertEqual(set(C.BACKTESTS), set("ABCDEFGH"))
 
 
 class PricingTests(unittest.TestCase):
@@ -33,17 +56,25 @@ class PricingTests(unittest.TestCase):
 
 
 class VarianceTests(unittest.TestCase):
-    def test_signal_filter(self):
-        ok, _, gap = signal_ok(16.0, 12.0, min_pts=1.0)
+    def test_matched_ratio_not_vol_points(self):
+        ratio = variance_ratio(0.16, 0.12)
+        self.assertAlmostEqual(ratio, (0.16 / 0.12) ** 2, places=6)
+        ok, why = signal_ok(ratio, 1.0)
         self.assertTrue(ok)
-        self.assertAlmostEqual(gap, 4.0)
-        ok2, _, _ = signal_ok(12.0, 16.0, min_pts=1.0)
+        ok2, _ = signal_ok(0.5, 2.0)
         self.assertFalse(ok2)
 
-    def test_variance_exit(self):
-        impl = implied_variance(0.16, 8 / 365.25)
-        self.assertTrue(variance_exhausted(0.85 * impl, impl, frac=0.80))
-        self.assertFalse(variance_exhausted(0.10 * impl, impl, frac=0.80))
+    def test_budget_is_full_sold_var_not_80pct(self):
+        impl = sold_variance(0.16, 8 / 365.25)
+        self.assertTrue(budget_exhausted(impl, impl))
+        self.assertFalse(budget_exhausted(0.80 * impl, impl))
+
+    def test_crush_and_hot_zscore(self):
+        sold = sold_variance(0.20, 10 / 365.25)
+        self.assertTrue(crush_take(0.08, 8 / 365.25, sold, 0.01 * sold))
+        self.assertFalse(crush_take(0.20, 10 / 365.25, sold, 0.01 * sold))
+        z = pit_zscore([1.0, 1.1, 0.9] * 8, 2.0, min_obs=12)
+        self.assertGreater(z, 1.0)
 
 
 class SizingTests(unittest.TestCase):
@@ -91,10 +122,17 @@ class UniverseTests(unittest.TestCase):
 
 
 class EventTests(unittest.TestCase):
-    def test_earnings_blackout(self):
-        events = load_events()
-        self.assertTrue(blocked(events, "INFY", "2026-04-16", "2026-05-12"))
-        self.assertFalse(blocked(events, "INFY", "2026-03-02", "2026-03-20"))
+    def test_event_in_life_not_tminus2(self):
+        cols = ["symbol", "date", "event_type"]
+        before = pd.DataFrame([("INFY", "2026-03-16", "earnings")], columns=cols)
+        during = pd.DataFrame([("INFY", "2026-04-10", "earnings")], columns=cols)
+        after = pd.DataFrame([("INFY", "2026-04-17", "earnings")], columns=cols)
+        for df in (before, during, after):
+            df["date"] = pd.to_datetime(df["date"])
+        entry, expiry = "2026-03-17", "2026-04-16"
+        self.assertFalse(blocked(before, "INFY", entry, expiry))
+        self.assertTrue(blocked(during, "INFY", entry, expiry))
+        self.assertFalse(blocked(after, "INFY", entry, expiry))
 
 
 class EngineTests(unittest.TestCase):
@@ -110,16 +148,17 @@ class EngineTests(unittest.TestCase):
         self.assertGreater(len(res.trades), 0)
         self.assertTrue((res.trades["book"] == "index").all())
         self.assertTrue((res.trades["symbol"] == "NIFTY").all())
+        self.assertTrue((res.trades["hedge_frequency"] == "1h").all())
         dte = (
             pd.to_datetime(res.trades["expiry"]) - pd.to_datetime(res.trades["entry_ts"]).dt.normalize()
         ).dt.days
         self.assertTrue((dte >= C.MIN_DTE).all())
 
-    def test_hedged_has_fut_pnl_column(self):
+    def test_hedged_has_hedge_pnl_column(self):
         res = self._run("B")
         self.assertGreater(len(res.trades), 0)
-        self.assertIn("pnl_fut", res.trades.columns)
-        self.assertFalse(np.allclose(res.trades["pnl_fut"].to_numpy(), 0.0))
+        self.assertIn("pnl_hedge", res.trades.columns)
+        self.assertFalse(np.allclose(res.trades["pnl_hedge"].to_numpy(), 0.0))
 
     def test_signal_filters_some(self):
         always = self._run("B")
@@ -140,15 +179,39 @@ class EngineTests(unittest.TestCase):
         for i in "ABCDEFGH":
             res = self._run(i)
             self.assertIsNotNone(res.trades)
-            self.assertTrue((C.CACHE_DIR / i).exists() or True)
 
-    def test_csvs_written(self):
+    def test_csvs_written_with_schema(self):
         from Index_Stock_VRP.reports import write_result
 
         res = self._run("A")
         d = write_result("A", res)
-        for name in ("trades.csv", "hourly.csv", "daily.csv", "risk.csv"):
+        for name, cols in (
+            ("trades.csv", schemas.TRADES),
+            ("hourly.csv", schemas.HOURLY),
+            ("daily.csv", schemas.DAILY),
+            ("risk.csv", schemas.RISK),
+        ):
             self.assertTrue((d / name).exists(), name)
+            header = Path(d / name).read_text().splitlines()[0].split(",")
+            for c in cols:
+                self.assertIn(c, header, f"{name} missing {c}")
+
+
+class StressTests(unittest.TestCase):
+    def test_stress_module(self):
+        from Index_Stock_VRP.stress import run_stress
+
+        df = run_stress()
+        self.assertTrue(bool(df["pass_"].all()), df.to_string(index=False))
+
+
+class SplitTests(unittest.TestCase):
+    def test_180d_too_short(self):
+        from Index_Stock_VRP.splits import evaluate
+
+        r = evaluate(18, 40, 121)
+        self.assertFalse(r["ok"])
+        self.assertIn("Too short", r["reason"])
 
 
 class CacheOnlyImportTests(unittest.TestCase):
@@ -165,6 +228,7 @@ class CacheOnlyImportTests(unittest.TestCase):
         panel = src.panel("NIFTY")
         self.assertFalse(panel.empty)
         self.assertNotIn("growwapi", sys.modules)
+        self.assertNotIn("Calendar_Dispersion_BT.groww_io", sys.modules)
 
 
 if __name__ == "__main__":

@@ -48,15 +48,16 @@ def lots_for_stress(
     hedge: bool,
     capital: float = C.TARGET_CAPITAL,
     stress_frac: float = C.STRESS_FRAC,
-    max_lots: int = 200,
+    max_lots: int | None = None,
 ) -> int:
     t = years_to(ts, expiry)
     one = stress_pnl_one_lot(spot, k, t, iv, lot, hedge=hedge)
     budget = -abs(float(capital) * float(stress_frac))
+    cap = C.MAX_LOTS if max_lots is None else int(max_lots)
     if one >= 0 or not np.isfinite(one):
         return 1
     n = int(math.floor(budget / one))
-    return int(np.clip(n, 1, max_lots))
+    return int(np.clip(n, 1, cap))
 
 
 def margin_posted(spot: float, lots: int, lot: int, fut_units: float, *, is_index: bool) -> dict[str, float]:

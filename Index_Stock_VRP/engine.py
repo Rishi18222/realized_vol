@@ -1,4 +1,4 @@
-"""Event-driven Index VRP and Stock VRP simulator."""
+"""Event-driven Index VRP and Stock VRP simulator (framework v2)."""
 
 from __future__ import annotations
 
@@ -7,15 +7,16 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from . import config as C
 from . import calendar_events as ev
+from . import config as C
 from . import execution as ex
+from . import schemas
 from . import universe as uni
 from . import variance as var
 from .pricing import atm_forward_strike, dte_days, expected_move, straddle_unit, years_to
-from .sizing import lots_for_stress, margin_posted
-from .source import daily_close, is_monthly_expiry, row_at
-
+from .sizing import lots_for_stress, stress_pnl_one_lot
+from .source import is_monthly_expiry, row_at
+from .span_elm import margin_short_straddle
 
 KIND_ORDER = {"bar": 0, "index_entry": 1, "stock_entry": 2}
 
@@ -47,14 +48,17 @@ class Position:
     fill_source: str
     iv_entry: float
     spot_entry: float
-    impl_var: float
-    real_var: float = 0.0
+    t_entry: float
+    sold_var: float
+    path_real_var: float = 0.0
     last_spot: float = 0.0
     fut_units: float = 0.0
     pnl_opt: float = 0.0
-    pnl_fut: float = 0.0
+    pnl_hedge: float = 0.0
     costs: float = 0.0
-    vrp: float = float("nan")
+    var_ratio: float = float("nan")
+    z_score: float = float("nan")
+    rv_matched_ann: float = float("nan")
     notes: str = ""
 
 
@@ -89,17 +93,18 @@ class Engine:
         self.skips: list[dict] = []
         self.dead: set[str] = set()
         self._nifty: pd.DataFrame | None = None
-        self._daily: dict[str, pd.Series] = {}
+        self._spot: dict[str, pd.Series] = {}
+        self._ratio_hist: dict[str, list[tuple[pd.Timestamp, float]]] = {}
 
     def nifty(self) -> pd.DataFrame:
         if self._nifty is None:
             self._nifty = self.src.panel(C.INDEX)
         return self._nifty
 
-    def daily(self, symbol: str) -> pd.Series:
-        if symbol not in self._daily:
-            self._daily[symbol] = daily_close(self.src.panel(symbol))
-        return self._daily[symbol]
+    def spots(self, symbol: str) -> pd.Series:
+        if symbol not in self._spot:
+            self._spot[symbol] = var.hourly_spot(self.src.panel(symbol))
+        return self._spot[symbol]
 
     def build_events(self) -> list[Event]:
         panel = self.nifty()
@@ -118,7 +123,7 @@ class Engine:
 
     def run(self) -> EngineResult:
         events = self.build_events()
-        print(f"[{self.spec.id}] {self.spec.title}  events={len(events)}")
+        print(f"[{self.spec.id}] {self.spec.title}  events={len(events)}  hedge={C.HEDGE_FREQUENCY}")
         for e in events:
             if e.kind == "bar":
                 self._on_bar(e.ts)
@@ -131,6 +136,20 @@ class Engine:
             self._close(sym, ts, "eod_flatten")
         return self._frames()
 
+    def _metrics(self, symbol: str, ts: pd.Timestamp, expiry: str, iv: float) -> tuple[float, float, float, float]:
+        t = years_to(ts, expiry)
+        rv = var.matched_tenor_rv_ann(self.spots(symbol), ts, t)
+        ratio = var.variance_ratio(iv, rv)
+        hist = [r for t0, r in self._ratio_hist.get(symbol, []) if t0 < ts]
+        hist = hist[-C.Z_LOOKBACK_OBS :]
+        z = var.pit_zscore(hist, ratio)
+        return t, rv, ratio, z
+
+    def _remember_ratio(self, symbol: str, ts: pd.Timestamp, ratio: float) -> None:
+        if not np.isfinite(ratio):
+            return
+        self._ratio_hist.setdefault(symbol, []).append((pd.Timestamp(ts), float(ratio)))
+
     def _on_bar(self, ts: pd.Timestamp) -> None:
         for sym in list(self.positions):
             pos = self.positions[sym]
@@ -141,10 +160,11 @@ class Engine:
             spot = float(row["spot"])
             iv = float(row["atm_iv"]) / 100.0 if pd.notna(row.get("atm_iv")) else pos.iv_entry
             if pos.last_spot > 0 and spot > 0:
-                pos.real_var += float(np.log(spot / pos.last_spot) ** 2)
-                pos.pnl_fut += pos.fut_units * (spot - pos.last_spot)
+                pos.path_real_var += float(np.log(spot / pos.last_spot) ** 2)
+                pos.pnl_hedge += pos.fut_units * (spot - pos.last_spot)
             pos.last_spot = spot
-            g = straddle_unit(spot, pos.K, years_to(ts, pos.expiry), iv)
+            t_now = years_to(ts, pos.expiry)
+            g = straddle_unit(spot, pos.K, t_now, iv)
             if self.spec.hedge and int(ts.hour) >= C.HEDGE_OPEN_HOUR:
                 target = -g["delta"] * pos.lots * pos.lot
                 d_u = target - pos.fut_units
@@ -153,6 +173,9 @@ class Engine:
                     pos.fut_units = target
             mark = self._straddle_mark(pos, ts, g["price"])
             opt_unreal = pos.lots * pos.lot * (pos.ce_fill + pos.pe_fill - mark)
+            elapsed = max((pd.Timestamp(ts) - pos.entry_ts).total_seconds() / (365.25 * 24 * 3600), 0.0)
+            hot = var.running_hot_ratio(pos.path_real_var, elapsed, pos.sold_var, pos.t_entry)
+            remaining = pos.sold_var - pos.path_real_var
             self.hourly_rows.append(
                 dict(
                     ts=str(ts),
@@ -164,31 +187,49 @@ class Engine:
                     spot=spot,
                     iv=iv * 100.0,
                     straddle_mark=mark,
-                    fut_units=pos.fut_units,
-                    real_var=pos.real_var,
-                    impl_var=pos.impl_var,
+                    hedge_units=pos.fut_units,
+                    hedge_frequency=C.HEDGE_FREQUENCY,
+                    delta=g["delta"],
+                    gamma=g["gamma"],
+                    vega=g["vega"],
+                    theta=g["theta"],
+                    path_real_var=pos.path_real_var,
+                    sold_var=pos.sold_var,
+                    remaining_var=remaining,
+                    running_hot_ratio=hot,
                     pnl_opt_unreal=opt_unreal,
-                    pnl_fut=pos.pnl_fut,
+                    pnl_hedge=pos.pnl_hedge,
                     costs=pos.costs,
                 )
             )
-            why = self._exit_reason(pos, ts, row, spot, iv)
+            why = self._exit_reason(pos, ts, row, spot, iv, t_now, elapsed)
             if why:
                 self._close(sym, ts, why)
 
-    def _exit_reason(self, pos: Position, ts: pd.Timestamp, row: pd.Series, spot: float, iv: float) -> str | None:
+    def _exit_reason(
+        self,
+        pos: Position,
+        ts: pd.Timestamp,
+        row: pd.Series,
+        spot: float,
+        iv: float,
+        t_now: float,
+        elapsed: float,
+    ) -> str | None:
         if ts >= pos.roll_ts and int(ts.hour) >= C.ROLL_HOUR:
             return "monday_roll" if pos.book == "index" else "monthly_roll"
         if pos.book == "stock" and dte_days(ts, pos.expiry) <= C.STOCK_EXIT_DTE and int(ts.hour) >= C.ROLL_HOUR:
             return "dte_exit"
-        if self.spec.var_exit and var.variance_exhausted(pos.real_var, pos.impl_var):
-            return "variance_remaining"
-        s_open = float(row.get("spot", spot))
+        if self.spec.var_exit:
+            if var.budget_exhausted(pos.path_real_var, pos.sold_var):
+                return "variance_budget"
+            if var.is_running_hot(pos.path_real_var, elapsed, pos.sold_var, pos.t_entry):
+                return "running_hot"
+            if var.crush_take(iv, t_now, pos.sold_var, pos.path_real_var):
+                return "iv_crush"
         em = expected_move(pos.spot_entry, pos.iv_entry, max(dte_days(ts, pos.expiry), 1))
         if em > 0 and abs(spot - pos.spot_entry) >= C.EM_MULT * em and ts < pos.roll_ts:
             return "em_stress"
-        if self.spec.ex_events and ev.blocked(self.events_df, pos.symbol, ts, ts):
-            return "event_blackout"
         return None
 
     def _try_index_entry(self, ts: pd.Timestamp) -> None:
@@ -198,20 +239,22 @@ class Engine:
         row = row_at(panel, ts)
         if row is None or pd.isna(row.get("spot")) or pd.isna(row.get("atm_iv")):
             return
-        expiries = self.src.expiries(C.INDEX)
-        expiry = _next_tuesday(expiries, ts, C.MIN_DTE)
+        expiry = _next_tuesday(self.src.expiries(C.INDEX), ts, C.MIN_DTE)
         if not expiry:
             self._skip(ts, C.INDEX, "no Tuesday expiry ≥8 DTE")
             return
+        iv = float(row["atm_iv"]) / 100.0
+        t, rv, ratio, z = self._metrics(C.INDEX, ts, expiry, iv)
+        if int(ts.hour) == C.ROLL_HOUR:
+            self._remember_ratio(C.INDEX, ts, ratio)
         if self.spec.signal:
-            rv = var.rv_nd_pct(self.daily(C.INDEX), ts)
-            ok, why, gap = var.signal_ok(float(row["atm_iv"]), rv)
+            ok, why = var.signal_ok(ratio, z)
             if not ok:
-                self._skip(ts, C.INDEX, why, vrp=gap)
+                self._skip(ts, C.INDEX, why, var_ratio=ratio, z_score=z)
                 return
-        else:
-            gap = var.vrp_pts(float(row["atm_iv"]), var.rv_nd_pct(self.daily(C.INDEX), ts))
-        self._open_straddle(ts, C.INDEX, expiry, "index", float(row["spot"]), float(row["atm_iv"]) / 100.0, gap)
+        self._open_straddle(
+            ts, C.INDEX, expiry, "index", float(row["spot"]), iv, t, rv, ratio, z
+        )
 
     def _try_stock_entries(self, ts: pd.Timestamp) -> None:
         names = uni.tradeable_asof(ts, membership=self.membership)
@@ -240,16 +283,19 @@ class Engine:
                 self._skip(ts, sym, "no monthly expiry in DTE window")
                 continue
             if self.spec.ex_events and ev.blocked(self.events_df, sym, ts, expiry):
-                self._skip(ts, sym, "earnings/corporate blackout")
+                self._skip(ts, sym, "event in option life [entry, expiry]")
                 continue
-            gap = var.vrp_pts(float(row["atm_iv"]), var.rv_nd_pct(self.daily(sym), ts))
+            iv = float(row["atm_iv"]) / 100.0
+            t, rv, ratio, z = self._metrics(sym, ts, expiry, iv)
+            if int(ts.hour) == C.ROLL_HOUR:
+                self._remember_ratio(sym, ts, ratio)
             if self.spec.signal:
-                ok, why, gap = var.signal_ok(float(row["atm_iv"]), var.rv_nd_pct(self.daily(sym), ts))
+                ok, why = var.signal_ok(ratio, z)
                 if not ok:
-                    self._skip(ts, sym, why, vrp=gap)
+                    self._skip(ts, sym, why, var_ratio=ratio, z_score=z)
                     continue
             self._open_straddle(
-                ts, sym, expiry, "stock", float(row["spot"]), float(row["atm_iv"]) / 100.0, gap, capital=per
+                ts, sym, expiry, "stock", float(row["spot"]), iv, t, rv, ratio, z, capital=per
             )
 
     def _open_straddle(
@@ -260,11 +306,13 @@ class Engine:
         book: str,
         spot: float,
         iv: float,
-        vrp: float,
+        t: float,
+        rv: float,
+        ratio: float,
+        z: float,
         *,
         capital: float | None = None,
     ) -> None:
-        t = years_to(ts, expiry)
         cmap = self.src.contracts(symbol, expiry)
         strikes = list(cmap) if cmap else None
         k = atm_forward_strike(spot, t, strikes=strikes, step=self.src.strike_step(symbol))
@@ -278,12 +326,12 @@ class Engine:
         ce_mid = ex.mid_from_ohlc(ce_row)
         pe_mid = ex.mid_from_ohlc(pe_row)
         if ce_mid is None or pe_mid is None or ce_sym is None or pe_sym is None:
-            self._skip(ts, symbol, f"missing tape {expiry} K={k}")
+            self._skip(ts, symbol, f"missing tape {expiry} K={k}", var_ratio=ratio, z_score=z)
             return
         ce_fill, src_c = ex.fill_price(ce_row, side="sell")
         pe_fill, src_p = ex.fill_price(pe_row, side="sell")
         if ce_fill is None or pe_fill is None:
-            self._skip(ts, symbol, "no fill")
+            self._skip(ts, symbol, "no fill", var_ratio=ratio, z_score=z)
             return
         cash_mid = n * lot * (ce_mid + pe_mid)
         costs = ex.statutory_opt(n * lot * ce_mid, "sell")["total"] + ex.statutory_opt(n * lot * pe_mid, "sell")["total"]
@@ -292,6 +340,7 @@ class Engine:
         if abs(fut) > 0:
             costs += ex.hedge_cost(spot * abs(fut), fut)
         roll = _roll_ts(ts, book, expiry, self.nifty())
+        sold = var.sold_variance(iv, t)
         pos = Position(
             trade_id=f"{self.spec.id}-{symbol}-{ts.strftime('%Y%m%d%H')}-{expiry}",
             book=book,
@@ -311,33 +360,48 @@ class Engine:
             fill_source=f"{src_c}/{src_p}",
             iv_entry=float(iv),
             spot_entry=float(spot),
-            impl_var=var.implied_variance(iv, t),
+            t_entry=float(t),
+            sold_var=float(sold),
             last_spot=float(spot),
             fut_units=float(fut),
             costs=float(costs),
-            vrp=float(vrp) if vrp is not None else float("nan"),
-            notes=f"ATM-F K={k:.2f} F={spot * np.exp(C.RISK_FREE * t):.2f} lots={n}",
+            var_ratio=float(ratio) if np.isfinite(ratio) else float("nan"),
+            z_score=float(z) if np.isfinite(z) else float("nan"),
+            rv_matched_ann=float(rv) if np.isfinite(rv) else float("nan"),
+            notes=(
+                f"ATM-F K={k:.2f} F={spot * np.exp(C.RISK_FREE * t):.2f} lots={n} "
+                f"hedge={C.HEDGE_FREQUENCY}/{C.HEDGE_UNDERLYING}"
+            ),
         )
         self.positions[symbol] = pos
-        m = margin_posted(spot, n, lot, fut, is_index=book == "index")
+        m = margin_short_straddle(
+            symbol, expiry, k, n, lot, spot, iv, ts, fut, is_index=book == "index"
+        )
+        one = stress_pnl_one_lot(spot, k, t, iv, lot, hedge=self.spec.hedge)
         self.risk_rows.append(
             dict(
                 ts=str(ts),
                 backtest=self.spec.id,
+                book=book,
                 symbol=symbol,
                 expiry=expiry,
                 lots=n,
-                stress_capital=m["capital"],
-                span=m["span"],
-                fut_margin=m["fut"],
+                stress_pnl_1lot=one,
+                stress_capital=m.posted,
+                span=m.span,
+                elm=m.elm,
+                posted_margin=m.posted,
                 premium_mid=cash_mid,
-                vrp=pos.vrp,
-                impl_var=pos.impl_var,
+                var_ratio=pos.var_ratio,
+                z_score=pos.z_score,
+                sold_var=pos.sold_var,
+                hedge_frequency=C.HEDGE_FREQUENCY,
+                margin_source=m.source,
             )
         )
         print(
             f"  [{self.spec.id}] OPEN {symbol} {ts} {expiry} K={k:.1f} {n}x{lot} "
-            f"mid {ce_mid+pe_mid:.2f} src {pos.fill_source} VRP {pos.vrp:.2f}"
+            f"mid {ce_mid+pe_mid:.2f} src {pos.fill_source} ratio {pos.var_ratio:.2f} z {pos.z_score:.2f}"
         )
 
     def _close(self, symbol: str, ts: pd.Timestamp, reason: str) -> None:
@@ -368,7 +432,7 @@ class Engine:
             pos.costs += ex.hedge_cost(spot * abs(pos.fut_units), -pos.fut_units)
             pos.fut_units = 0.0
         pnl_opt = pos.lots * pos.lot * ((pos.ce_fill + pos.pe_fill) - (ce_fill + pe_fill))
-        pnl = pnl_opt + pos.pnl_fut - pos.costs
+        pnl = pnl_opt + pos.pnl_hedge - pos.costs
         self.closed.append(
             dict(
                 trade_id=pos.trade_id,
@@ -382,7 +446,12 @@ class Engine:
                 entry_ts=str(pos.entry_ts),
                 exit_ts=str(ts),
                 exit_reason=reason,
+                dte_entry=dte_days(pos.entry_ts, pos.expiry),
                 fill_source=pos.fill_source,
+                hedge_frequency=C.HEDGE_FREQUENCY,
+                hedge_underlying=C.HEDGE_UNDERLYING,
+                ce_sym=pos.ce_sym,
+                pe_sym=pos.pe_sym,
                 ce_open_mid=pos.ce_open_mid,
                 pe_open_mid=pos.pe_open_mid,
                 ce_open_fill=pos.ce_fill,
@@ -392,12 +461,16 @@ class Engine:
                 straddle_open=pos.ce_fill + pos.pe_fill,
                 straddle_close=ce_fill + pe_fill,
                 pnl_opt=pnl_opt,
-                pnl_fut=pos.pnl_fut,
+                pnl_hedge=pos.pnl_hedge,
                 costs=pos.costs,
                 pnl=pnl,
-                vrp=pos.vrp,
-                real_var=pos.real_var,
-                impl_var=pos.impl_var,
+                iv_entry=pos.iv_entry,
+                rv_matched_ann=pos.rv_matched_ann,
+                var_ratio=pos.var_ratio,
+                z_score=pos.z_score,
+                sold_var=pos.sold_var,
+                path_real_var=pos.path_real_var,
+                remaining_var=pos.sold_var - pos.path_real_var,
                 notes=pos.notes,
             )
         )
@@ -424,29 +497,53 @@ class Engine:
             return ce + pe
         return float(bs_px)
 
-    def _skip(self, ts, symbol, reason, vrp=float("nan")):
-        self.skips.append(dict(ts=str(ts), backtest=self.spec.id, symbol=symbol, reason=reason, vrp=vrp))
+    def _skip(self, ts, symbol, reason, var_ratio=float("nan"), z_score=float("nan")):
+        self.skips.append(
+            dict(
+                ts=str(ts),
+                backtest=self.spec.id,
+                book=self.spec.book,
+                symbol=symbol,
+                reason=reason,
+                var_ratio=var_ratio,
+                z_score=z_score,
+            )
+        )
 
     def _frames(self) -> EngineResult:
-        trades = pd.DataFrame(self.closed)
-        hourly = pd.DataFrame(self.hourly_rows)
-        risk = pd.DataFrame(self.risk_rows)
-        skips = pd.DataFrame(self.skips)
+        trades = schemas.conform(pd.DataFrame(self.closed), schemas.TRADES)
+        hourly = schemas.conform(pd.DataFrame(self.hourly_rows), schemas.HOURLY)
+        risk = schemas.conform(pd.DataFrame(self.risk_rows), schemas.RISK)
+        skips = schemas.conform(pd.DataFrame(self.skips), schemas.SKIPS)
         if hourly.empty:
-            daily = pd.DataFrame()
+            daily = schemas.conform(pd.DataFrame(), schemas.DAILY)
         else:
             h = hourly.copy()
             h["ts"] = pd.to_datetime(h["ts"])
             h["date"] = h["ts"].dt.normalize()
-            daily = (
-                h.groupby(["date", "backtest", "book"], as_index=False)
-                .agg(
-                    pnl_opt_unreal=("pnl_opt_unreal", "last"),
-                    pnl_fut=("pnl_fut", "last"),
-                    costs=("costs", "last"),
-                    n_names=("symbol", "nunique"),
-                )
+            g = h.groupby(["date", "backtest", "book"], as_index=False).agg(
+                n_open=("symbol", "nunique"),
+                pnl_opt=("pnl_opt_unreal", "last"),
+                pnl_hedge=("pnl_hedge", "last"),
+                costs=("costs", "last"),
             )
+            g["pnl"] = g["pnl_opt"] + g["pnl_hedge"] - g["costs"]
+            g = g.sort_values("date")
+            g["equity"] = g["pnl"].cumsum()
+            g["drawdown"] = g["equity"] - g["equity"].cummax()
+            if not risk.empty:
+                r = risk.copy()
+                r["ts"] = pd.to_datetime(r["ts"])
+                r["date"] = r["ts"].dt.normalize()
+                rm = r.groupby("date", as_index=False).agg(
+                    span=("span", "sum"), elm=("elm", "sum"), posted_margin=("posted_margin", "sum")
+                )
+                g = g.merge(rm, on="date", how="left")
+            else:
+                g["span"] = np.nan
+                g["elm"] = np.nan
+                g["posted_margin"] = np.nan
+            daily = schemas.conform(g, schemas.DAILY)
         return EngineResult(trades=trades, hourly=hourly, daily=daily, risk=risk, skips=skips)
 
 

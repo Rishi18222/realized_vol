@@ -1,5 +1,5 @@
-"""Independent Index VRP and Stock VRP books. No dispersion in v1."""
+"""Independent Index VRP and Stock VRP books. Framework v2. No dispersion."""
 
-from .config import BACKTESTS, PKG_DIR
+from .config import BACKTESTS, FRAMEWORK_VERSION, HEDGE_FREQUENCY, PKG_DIR
 
-__all__ = ["BACKTESTS", "PKG_DIR"]
+__all__ = ["BACKTESTS", "FRAMEWORK_VERSION", "HEDGE_FREQUENCY", "PKG_DIR"]

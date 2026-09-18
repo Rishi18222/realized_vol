@@ -44,17 +44,30 @@ class SyntheticSource:
         self._steps = dict(C.DEFAULT_STEPS)
         self._ohlc: dict[str, pd.DataFrame] = {}
         nifty = self._gbm(SPOT0["NIFTY"], 0.12, rng)
-        self._panels = {C.INDEX: self._panel(C.INDEX, nifty, IV[C.INDEX])}
+        self._iv = {C.INDEX: self._iv_path(IV[C.INDEX], rng)}
+        self._panels = {C.INDEX: self._panel(C.INDEX, nifty, self._iv[C.INDEX])}
         r_i = np.diff(np.log(nifty), prepend=np.log(nifty[0]))
-        dt = 1.0 / (C.TRADING_DAYS * C.TRADING_HOURS_PER_DAY)
+        dt = 1.0 / (C.TRADING_DAYS * C.NATIVE_BARS_PER_DAY)
         for s in STOCKS:
             idio = rng.normal(0.0, 0.18 * np.sqrt(dt), size=len(nifty))
             px = SPOT0[s] * np.exp(np.cumsum(BETA[s] * r_i + idio))
-            self._panels[s] = self._panel(s, px, IV[s])
+            self._iv[s] = self._iv_path(IV[s], rng)
+            self._panels[s] = self._panel(s, px, self._iv[s])
         self._build_option_tape()
 
+    def _iv_path(self, base: float, rng) -> np.ndarray:
+        n = len(self.ts)
+        wave = 0.18 * np.sin(np.linspace(0, 4 * np.pi, n))
+        noise = rng.normal(0.0, 0.02, size=n)
+        iv = base * (1.0 + wave + noise)
+        w0 = self.ts[0].isocalendar().week
+        for i, t in enumerate(self.ts):
+            if t.isocalendar().week == w0 + 3:
+                iv[i] *= 0.55
+        return np.clip(iv, 0.08, 0.60)
+
     def _gbm(self, s0: float, vol: float, rng) -> np.ndarray:
-        dt = 1.0 / (C.TRADING_DAYS * C.TRADING_HOURS_PER_DAY)
+        dt = 1.0 / (C.TRADING_DAYS * C.NATIVE_BARS_PER_DAY)
         shocks = rng.normal(0.0, vol * np.sqrt(dt), size=len(self.ts))
         w0 = self.ts[0].isocalendar().week
         for i, t in enumerate(self.ts):
@@ -69,10 +82,10 @@ class SyntheticSource:
                 return e
         return self._expiries[-1]
 
-    def _panel(self, symbol: str, spots: np.ndarray, iv: float) -> pd.DataFrame:
+    def _panel(self, symbol: str, spots: np.ndarray, ivs: np.ndarray) -> pd.DataFrame:
         step = self._steps.get(symbol, 5.0)
         rows = []
-        for ts, s in zip(self.ts, spots):
+        for ts, s, iv in zip(self.ts, spots, ivs):
             exp = self._front_expiry(ts, symbol)
             rows.append(
                 dict(
@@ -80,7 +93,7 @@ class SyntheticSource:
                     spot=float(s),
                     expiry_date=exp,
                     atm_strike=atm_forward_strike(float(s), years_to(ts, exp), step=step),
-                    atm_iv=iv * 100.0,
+                    atm_iv=float(iv) * 100.0,
                 )
             )
         return pd.DataFrame(rows)
@@ -89,9 +102,9 @@ class SyntheticSource:
         buckets: dict[str, list] = {}
         for symbol, panel in self._panels.items():
             step = self._steps.get(symbol, 5.0)
-            iv = IV[symbol]
             for _, r in panel.iterrows():
                 ts = pd.Timestamp(r["timestamp"])
+                iv = float(r["atm_iv"]) / 100.0
                 for exp in self._expiries:
                     if ts.normalize() > pd.Timestamp(exp):
                         continue

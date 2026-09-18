@@ -7,12 +7,6 @@ import pandas as pd
 
 from . import config as C
 
-STT_OPT_SELL = 0.0015
-STAMP_OPT_BUY = 0.00003
-NSE_OPT = 0.0003553
-SEBI = 0.000001
-GST = 0.18
-
 
 def mid_from_ohlc(row: pd.Series | None) -> float | None:
     if row is None:
@@ -85,11 +79,11 @@ def fill_price(
 
 def statutory_opt(premium_cash: float, side: str) -> dict[str, float]:
     p = abs(float(premium_cash))
-    stt = STT_OPT_SELL * p if side in ("sell", "short") else 0.0
-    stamp = STAMP_OPT_BUY * p if side in ("buy", "long") else 0.0
-    nse = NSE_OPT * p
-    sebi = SEBI * p
-    gst = GST * (nse + sebi)
+    stt = C.STT_OPT_SELL * p if side in ("sell", "short") else 0.0
+    stamp = C.STAMP_OPT_BUY * p if side in ("buy", "long") else 0.0
+    nse = C.NSE_OPT * p
+    sebi = C.SEBI * p
+    gst = C.GST * (nse + sebi)
     return dict(stt=stt, stamp=stamp, nse=nse, sebi=sebi, gst=gst, total=stt + stamp + nse + sebi + gst)
 
 
