@@ -39,30 +39,35 @@ def evaluate(n_index_trades: int, n_stock_trades: int, n_sessions: int) -> dict:
     }
 
 
-def write_disclaimer(results: dict, inventory: dict | None = None, path: Path | None = None) -> Path:
-    n_idx = 0
-    n_stk = 0
-    for res in results.values():
-        t = res.trades
-        if t is None or t.empty:
-            continue
-        n_idx += int((t["book"] == "index").sum()) if "book" in t.columns else 0
-        n_stk += int((t["book"] == "stock").sum()) if "book" in t.columns else 0
+def write_disclaimer(res, inventory: dict | None = None, path: Path | None = None) -> Path:
+    t = getattr(res, "trades", None)
+    if t is None or getattr(t, "empty", True):
+        n_idx = n_stk = 0
+    else:
+        n_idx = int((t["book"] == "index").sum()) if "book" in t.columns else 0
+        n_stk = int((t["book"] == "stock").sum()) if "book" in t.columns else 0
     n_sess = 0
     if inventory and "split" in inventory:
         n_sess = int(inventory["split"].get("n_nifty_sessions") or 0)
     report = evaluate(n_idx, n_stk, n_sess)
     out = Path(path or (C.CACHE_DIR / "split_disclaimer.md"))
+    out.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "# In-sample / validation / out-of-sample",
         "",
         report["reason"],
         "",
+        "Do not claim OOS.",
+        "",
         f"- n_sessions: {report['n_sessions']}",
-        f"- n_index_trades (A–H, overlapping books): {report['n_index_trades']}",
+        f"- n_index_trades: {report['n_index_trades']}",
         f"- n_stock_trades: {report['n_stock_trades']}",
         f"- split applied: {'yes' if report['ok'] else 'no'}",
         "",
     ]
-    out.write_text("\n".join(lines))
+    text = "\n".join(lines)
+    out.write_text(text)
+    (C.DATA_DIR / "split_disclaimer.md").write_text(text)
+    C.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (C.OUTPUT_DIR / "split_disclaimer.md").write_text(text)
     return out

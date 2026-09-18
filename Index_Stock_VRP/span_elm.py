@@ -150,6 +150,7 @@ def _xml_margin(
     *,
     is_index: bool,
     spot: float,
+    book_side: str = "short",
 ) -> SpanMargin | None:
     path = find_span_zip(pd.Timestamp(asof).to_pydatetime())
     if path is None:
@@ -157,15 +158,15 @@ def _xml_margin(
     table = _opts_cached(str(path), symbol)
     if not table:
         return None
-    units = -abs(int(lots) * int(lot))
+    units = (1 if book_side == "long" else -1) * abs(int(lots) * int(lot))
     ra = np.zeros(16)
     net_delta = 0.0
     matched = 0
     missing: list[str] = []
-    for side in ("C", "P"):
-        rec = _opt_lookup(table, expiry, side, float(k))
+    for cp in ("C", "P"):
+        rec = _opt_lookup(table, expiry, cp, float(k))
         if rec is None:
-            missing.append(f"{symbol} {expiry} {side} {k}")
+            missing.append(f"{symbol} {expiry} {cp} {k}")
             continue
         ra += units * np.array(rec["ra"], dtype=float)
         net_delta += units * float(rec["delta"])
@@ -226,7 +227,7 @@ def _proxy_margin(
     )
 
 
-def margin_short_straddle(
+def margin_straddle(
     symbol: str,
     expiry: str,
     k: float,
@@ -238,11 +239,15 @@ def margin_short_straddle(
     fut_units: float,
     *,
     is_index: bool,
+    book_side: str = "short",
 ) -> SpanMargin:
     t = years_to(pd.Timestamp(ts), expiry)
     g = straddle_unit(spot, k, t, iv)
-    delta_units = float(g["delta"]) * int(lots) * int(lot) + float(fut_units)
-    xml = _xml_margin(symbol, expiry, k, lots, lot, fut_units, ts, is_index=is_index, spot=spot)
+    sign = 1.0 if book_side == "long" else -1.0
+    delta_units = float(g["delta"]) * sign * int(lots) * int(lot) + float(fut_units)
+    xml = _xml_margin(
+        symbol, expiry, k, lots, lot, fut_units, ts, is_index=is_index, spot=spot, book_side=book_side
+    )
     if xml is not None:
         return xml
     return _proxy_margin(
@@ -254,3 +259,6 @@ def margin_short_straddle(
         asof=str(pd.Timestamp(ts).date()),
         delta_units=delta_units,
     )
+
+
+margin_short_straddle = margin_straddle

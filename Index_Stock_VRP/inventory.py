@@ -96,6 +96,10 @@ def inspect_disk() -> dict:
     ]
     fut_present = [str(d) for d in fut_dirs if d.exists() and any(d.iterdir())]
     holiday_files = list((C.DATA_DIR).glob("*holiday*"))
+    mem_path = C.DATA_DIR / "nifty50_membership.csv"
+    n_mem = 0
+    if mem_path.exists():
+        n_mem = int(pd.read_csv(mem_path)["symbol"].nunique())
 
     native_hours = sorted(hours) if hours else list(C.NATIVE_HOURS)
     is_hourly = native_hours == list(range(9, 16)) or set(native_hours) <= set(range(9, 16))
@@ -106,28 +110,29 @@ def inspect_disk() -> dict:
 
     can = [
         "Index weekly ATM-forward straddles on NIFTY 1h ATM-IV + option OHLC (Groww ~180d).",
-        "Stock monthly ATM-forward straddles on liquid F&O names that have both an ATM panel and option cache.",
+        "Stock monthly ATM-forward straddles on PIT Nifty 50 names that have both an ATM panel and option cache. Others are recorded as skips.",
+        "Long or short vol from implied forward variance vs 5/20/60/120 forecast RV after costs/buffers.",
         "Fills at option OHLC close as mid, plus configured slippage (no bid/ask tape).",
         "Statutory NSE F&O costs charged on mid premium.",
         f"SPAN XML risk arrays on {len(span_zips)} cached clearing zips; ELM 2% index / 3.5% stock otherwise.",
-        "Delta hedge on the native 1h clock using spot as the futures proxy.",
-        "Matched-tenor IV²/RV², remaining-variance budget, crush and running-hot exits.",
-        "Event-in-life skips using data/events.csv dates inside [entry, expiry].",
-        "Stress-loss lot cap (1.75× EM vs 20% of posted capital).",
+        "Delta hedge on the native 1h clock: Nifty spot proxy for the index book, own-stock spot proxy for each stock.",
         "--cache-only from pickle ATM-IV and option OHLC without growwapi.",
     ]
     cannot = [
         "5-minute Greeks or 5-minute hedges: every panel and option file is hourly (09:00–15:00). Hedge frequency is labeled 1h.",
         "True bid/ask execution: ATM panels and sampled option OHLC have no bid/ask columns. Engine uses mid±slippage and records fill_source=mid+slip.",
-        "True futures/SSF marks: no futures cache is present. Hedge P&L uses spot as a futures proxy and is labeled spot_as_fut_proxy.",
-        "PIT earnings announcement dates: data/events.csv is an illustrative research calendar (typical FY26/FY27 windows), not an announcement tape.",
-        "Full Nifty 50 option book: option OHLC underlyings are the 12 liquid F&O names plus NIFTY. Extra ATM panels (BAJAJFINSV, GRASIM, NMDC, NTPC) are not in LIQUID_FNO.",
+        "True futures/SSF marks: no futures cache is present. Hedge P&L uses spot as a futures proxy and is labeled spot_as_fut_proxy (index) or {symbol}_spot_proxy (stocks).",
+        "PIT earnings announcement dates: data/events.csv is an illustrative research calendar, not an announcement tape.",
+        f"Full Nifty 50 option book: option OHLC underlyings are {sorted(opt_und)}. Names without tape are skipped, not fabricated.",
+        f"A 50th PIT name beyond the membership file ({n_mem} unique symbols): the missing constituent is not invented.",
         "Official holiday calendar file: none in-package; session gaps are inferred from missing weekday bars.",
-        "IS / validation / OOS: Groww history is capped near 180 calendar days "
-        f"(~{n_sessions} NIFTY sessions, ~{n_mondays_est} Mondays). Too short for a three-way split.",
+        "120-day RV for most of the sample: Groww ~180 calendar days ≈ "
+        f"{n_sessions} sessions, so the 120 window is usually missing and weights renormalize. Nothing is filled in.",
+        "Out-of-sample / validation split: Groww history is capped near 180 calendar days "
+        f"(~{n_sessions} NIFTY sessions). Too short. Do not claim OOS.",
     ]
     report = {
-        "framework_version": 2,
+        "framework_version": 3,
         "hedge_frequency": "1h" if is_hourly else f"native_hours={native_hours}",
         "hedge_underlying": "spot_as_fut_proxy",
         "lookback_days_cap": 180,
@@ -145,6 +150,7 @@ def inspect_disk() -> dict:
         "futures_caches": fut_present,
         "holiday_files": [str(p) for p in holiday_files],
         "membership": str(C.DATA_DIR / "nifty50_membership.csv"),
+        "membership_n": n_mem,
         "events": str(C.DATA_DIR / "events.csv"),
         "can_test": can,
         "cannot_test": cannot,
@@ -160,11 +166,13 @@ def inspect_disk() -> dict:
 
 def write_inventory(out_dir: Path | None = None) -> dict:
     report = inspect_disk()
-    d = Path(out_dir or C.CACHE_DIR)
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "data_inventory.json").write_text(json.dumps(report, indent=2, default=str))
     md = _to_markdown(report)
-    (d / "data_inventory.md").write_text(md)
+    targets = [Path(out_dir or C.CACHE_DIR), C.OUTPUT_DIR]
+    for d in targets:
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "data_inventory.json").write_text(json.dumps(report, indent=2, default=str))
+        (d / "data_inventory.md").write_text(md)
+    C.DATA_DIR.mkdir(parents=True, exist_ok=True)
     (C.DATA_DIR / "inventory.md").write_text(md)
     return report
 
@@ -182,6 +190,7 @@ def _to_markdown(rep: dict) -> str:
         f"- SPAN zips: {rep['span_zip_count']} ({rep['span_zip_first']} → {rep['span_zip_last']}).",
         f"- Futures caches: {rep['futures_caches'] or 'none'}.",
         f"- Holiday files in package data: {rep['holiday_files'] or 'none (gaps from missing weekday bars)'}.",
+        f"- Membership names in file: {rep.get('membership_n', '?')}.",
         "",
         "## Panels",
         "",
@@ -203,7 +212,7 @@ def _to_markdown(rep: dict) -> str:
     split = rep["split"]
     lines += [
         "",
-        "## IS / validation / OOS",
+        "## Forecast RV / OOS",
         "",
         f"{split['reason']} NIFTY sessions={split['n_nifty_sessions']}, Mondays≈{split['n_mondays_est']}.",
         "",

@@ -1,15 +1,15 @@
-"""Required CSV column order for the v2 engine."""
+"""One output set for the two-book VRP backtest."""
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-TRADES = [
+TRADE_LOG = [
     "trade_id",
-    "backtest",
     "book",
     "symbol",
+    "side",
     "expiry",
     "K",
     "lots",
@@ -36,20 +36,21 @@ TRADES = [
     "costs",
     "pnl",
     "iv_entry",
-    "rv_matched_ann",
-    "var_ratio",
-    "z_score",
+    "rv_forecast",
+    "vrp_var",
+    "vrp_pts",
+    "rv_windows",
     "sold_var",
     "path_real_var",
     "remaining_var",
     "notes",
 ]
 
-HOURLY = [
+HOURLY_RISK = [
     "ts",
-    "backtest",
     "book",
     "symbol",
+    "side",
     "expiry",
     "K",
     "spot",
@@ -57,6 +58,7 @@ HOURLY = [
     "straddle_mark",
     "hedge_units",
     "hedge_frequency",
+    "hedge_underlying",
     "delta",
     "gamma",
     "vega",
@@ -68,13 +70,45 @@ HOURLY = [
     "pnl_opt_unreal",
     "pnl_hedge",
     "costs",
+    "span",
+    "elm",
+    "posted_margin",
+]
+
+HEDGE_LOG = [
+    "ts",
+    "book",
+    "symbol",
+    "side",
+    "hedge_underlying",
+    "hedge_frequency",
+    "d_units",
+    "units_after",
+    "spot",
+    "cost",
+    "reason",
+]
+
+REJECTED = [
+    "ts",
+    "book",
+    "symbol",
+    "reason",
+    "iv",
+    "rv_forecast",
+    "vrp_var",
+    "vrp_pts",
+    "net_edge",
+    "rv_windows",
+    "would_side",
 ]
 
 DAILY = [
     "date",
-    "backtest",
-    "book",
-    "n_open",
+    "n_index_open",
+    "n_stock_open",
+    "pnl_index",
+    "pnl_stock",
     "pnl_opt",
     "pnl_hedge",
     "costs",
@@ -84,36 +118,6 @@ DAILY = [
     "span",
     "elm",
     "posted_margin",
-]
-
-RISK = [
-    "ts",
-    "backtest",
-    "book",
-    "symbol",
-    "expiry",
-    "lots",
-    "stress_pnl_1lot",
-    "stress_capital",
-    "span",
-    "elm",
-    "posted_margin",
-    "premium_mid",
-    "var_ratio",
-    "z_score",
-    "sold_var",
-    "hedge_frequency",
-    "margin_source",
-]
-
-SKIPS = [
-    "ts",
-    "backtest",
-    "book",
-    "symbol",
-    "reason",
-    "var_ratio",
-    "z_score",
 ]
 
 

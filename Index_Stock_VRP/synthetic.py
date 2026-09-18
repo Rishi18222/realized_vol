@@ -1,4 +1,4 @@
-"""Synthetic hourly tape so A–H run without Groww."""
+"""Synthetic hourly tape for the two-book engine."""
 
 from __future__ import annotations
 
@@ -121,7 +121,10 @@ class SyntheticSource:
             self._ohlc[gsym] = df[~df.index.duplicated(keep="last")].sort_index()
 
     def panel(self, symbol: str) -> pd.DataFrame:
-        return self._panels[symbol.upper()]
+        symbol = symbol.upper()
+        if symbol not in self._panels:
+            raise FileNotFoundError(f"no synthetic panel for {symbol}")
+        return self._panels[symbol]
 
     def expiries(self, symbol: str) -> list[str]:
         return list(self._expiries)

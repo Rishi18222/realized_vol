@@ -1,4 +1,4 @@
-"""Point-in-time Nifty membership ∩ liquid F&O names."""
+"""Point-in-time Nifty 50 membership. Every name is scanned; tape gaps are skips."""
 
 from __future__ import annotations
 
@@ -9,12 +9,8 @@ import pandas as pd
 from . import config as C
 
 
-def _membership_path() -> Path:
-    return C.DATA_DIR / "nifty50_membership.csv"
-
-
 def load_membership(path: Path | None = None) -> pd.DataFrame:
-    p = path or _membership_path()
+    p = path or (C.DATA_DIR / "nifty50_membership.csv")
     df = pd.read_csv(p)
     df["symbol"] = df["symbol"].astype(str).str.upper()
     df["start"] = pd.to_datetime(df["start"])
@@ -30,7 +26,5 @@ def constituents_asof(asof, *, membership: pd.DataFrame | None = None) -> list[s
 
 
 def tradeable_asof(asof, *, membership: pd.DataFrame | None = None) -> list[str]:
-    """PIT index members that are in the liquid F&O book."""
-    names = constituents_asof(asof, membership=membership)
-    liquid = {s.upper() for s in C.LIQUID_FNO}
-    return [s for s in names if s in liquid]
+    """Every PIT Nifty 50 member. Missing option tape is a skip, not a filter here."""
+    return constituents_asof(asof, membership=membership)

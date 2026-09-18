@@ -1,5 +1,5 @@
 {
-  "framework_version": 2,
+  "framework_version": 3,
   "hedge_frequency": "1h",
   "hedge_frequency_note": "Native Groww ATM panels and option OHLC are hourly bars 09:00-15:00. Delta hedges and BS Greeks use that clock. This is not a 5-minute Greek engine.",
   "hedge_underlying": "spot_as_fut_proxy",
@@ -11,42 +11,42 @@
   "native_hours": [9, 10, 11, 12, 13, 14, 15],
   "lookback_days": 180,
   "target_capital": 2500000.0,
+  "scan_hour": 10,
   "books": {
     "index": {
-      "roll_weekday": 0,
-      "roll_hour": 10,
       "min_dte": 8,
-      "fill_hours": [10, 11, 12, 13, 14, 15],
       "hedge_open_hour": 9,
       "strike_step": 50.0,
-      "lot_fallback": 65
+      "lot_fallback": 65,
+      "instrument": "weekly_atm_forward_straddle",
+      "hedge": "nifty_spot_as_fut_proxy"
     },
     "stock": {
       "min_dte": 21,
       "max_dte": 45,
       "exit_dte": 7,
-      "entry_weekday": 0,
-      "entry_hour": 10
+      "instrument": "monthly_atm_forward_straddle",
+      "hedge": "own_stock_spot_proxy",
+      "universe": "nifty50_pit_membership"
     }
   },
   "signal": {
-    "var_ratio_min": 1.0,
-    "z_min": 0.5,
-    "z_lookback_obs": 40,
-    "z_min_obs": 12,
-    "note": "Matched-tenor variance ratio IV^2/RV^2 and PIT z-score. Not IV minus 5-day RV in vol points."
+    "windows": [5, 20, 60, 120],
+    "weights": [0.4, 0.3, 0.2, 0.1],
+    "min_windows": 2,
+    "cost_buffer_mult": 1.0,
+    "min_vrp_pts": 0.25,
+    "note": "Implied forward variance IV^2 versus forecast RV^2 from 5/20/60/120-day windows (weights 0.4/0.3/0.2/0.1). Missing windows are dropped and weights renormalized. Positive net VRP after round-trip costs and buffer → short straddle. Negative → long straddle. No always-in book."
   },
   "exits": {
     "variance_budget": true,
     "crush_frac": 0.3,
-      "running_hot_mult": 2.0,
-      "running_hot_min_hours": 7,
-      "em_mult": 1.75,
-    "note": "Stop when path realized variance >= sold_var=sigma^2*T. Crush TP when remaining implied var <= crush_frac * sold_var. Running-hot when realized rate >= hot_mult * sold rate. Not an 80% RV exit."
+    "running_hot_mult": 2.0,
+    "running_hot_min_hours": 7,
+    "em_mult": 1.75
   },
   "events": {
-    "mode": "event_in_life",
-    "note": "Exclude a name when an event date falls in [entry, expiry]. Not T-2/T+1."
+    "mode": "event_in_life"
   },
   "execution": {
     "slippage_frac": 0.005,
@@ -59,8 +59,7 @@
     "sebi": 0.000001,
     "gst": 0.18,
     "fut_stt_sell": 0.0002,
-    "fut_stamp_buy": 0.00002,
-    "note": "Statutory F&O charges applied to mid premium, not the slipped fill."
+    "fut_stamp_buy": 0.00002
   },
   "margins": {
     "elm_index": 0.02,
@@ -75,20 +74,6 @@
     "em_mult": 1.75,
     "max_lots": 200
   },
-  "liquid_fno": [
-    "HDFCBANK",
-    "RELIANCE",
-    "ICICIBANK",
-    "INFY",
-    "ITC",
-    "TCS",
-    "BHARTIARTL",
-    "LT",
-    "SBIN",
-    "AXISBANK",
-    "KOTAKBANK",
-    "BAJFINANCE"
-  ],
   "default_lots": {
     "NIFTY": 65,
     "HDFCBANK": 550,
@@ -102,7 +87,45 @@
     "SBIN": 750,
     "AXISBANK": 625,
     "KOTAKBANK": 400,
-    "BAJFINANCE": 125
+    "BAJFINANCE": 125,
+    "HINDUNILVR": 300,
+    "MARUTI": 50,
+    "SUNPHARMA": 350,
+    "TITAN": 175,
+    "NTPC": 1500,
+    "POWERGRID": 1200,
+    "ULTRACEMCO": 100,
+    "ASIANPAINT": 200,
+    "NESTLEIND": 80,
+    "HCLTECH": 350,
+    "WIPRO": 3000,
+    "JSWSTEEL": 675,
+    "TATASTEEL": 550,
+    "TECHM": 600,
+    "ADANIENT": 300,
+    "ADANIPORTS": 450,
+    "ONGC": 1125,
+    "COALINDIA": 2100,
+    "BAJAJFINSV": 50,
+    "GRASIM": 250,
+    "CIPLA": 325,
+    "DRREDDY": 125,
+    "APOLLOHOSP": 125,
+    "HDFCLIFE": 1100,
+    "SBILIFE": 750,
+    "TATACONSUM": 450,
+    "HINDALCO": 1400,
+    "BPCL": 1800,
+    "INDUSINDBK": 500,
+    "BEL": 475,
+    "TRENT": 200,
+    "JIOFIN": 1300,
+    "ETERNAL": 975,
+    "M&M": 200,
+    "SHRIRAMFIN": 600,
+    "TMPV": 1000,
+    "MAXHEALTH": 400,
+    "NMDC": 2250
   },
   "default_steps": {
     "NIFTY": 50.0,
@@ -119,70 +142,6 @@
     "KOTAKBANK": 10.0,
     "BAJFINANCE": 20.0
   },
-  "backtests": {
-    "A": {
-      "book": "index",
-      "hedge": false,
-      "signal": false,
-      "var_exit": false,
-      "ex_events": false,
-      "title": "Index weekly, unhedged, always-in"
-    },
-    "B": {
-      "book": "index",
-      "hedge": true,
-      "signal": false,
-      "var_exit": false,
-      "ex_events": false,
-      "title": "Index weekly, 1h delta-hedged, always-in"
-    },
-    "C": {
-      "book": "index",
-      "hedge": true,
-      "signal": true,
-      "var_exit": false,
-      "ex_events": false,
-      "title": "Index weekly, hedged, matched-tenor var-ratio filter"
-    },
-    "D": {
-      "book": "index",
-      "hedge": true,
-      "signal": true,
-      "var_exit": true,
-      "ex_events": false,
-      "title": "Index weekly, hedged, var-ratio + remaining-variance budget"
-    },
-    "E": {
-      "book": "stock",
-      "hedge": false,
-      "signal": false,
-      "var_exit": false,
-      "ex_events": false,
-      "title": "Stock monthly, unhedged, always-in"
-    },
-    "F": {
-      "book": "stock",
-      "hedge": true,
-      "signal": false,
-      "var_exit": false,
-      "ex_events": false,
-      "title": "Stock monthly, 1h delta-hedged, always-in"
-    },
-    "G": {
-      "book": "stock",
-      "hedge": true,
-      "signal": false,
-      "var_exit": false,
-      "ex_events": true,
-      "title": "Stock monthly, hedged, event-in-life exclusion"
-    },
-    "H": {
-      "book": "stock",
-      "hedge": true,
-      "signal": true,
-      "var_exit": true,
-      "ex_events": true,
-      "title": "Stock monthly, hedged, var-ratio + budget + event-in-life"
-    }
-  }
+  "stock_lot_fallback": 1,
+  "stock_step_fallback": 5.0
 }

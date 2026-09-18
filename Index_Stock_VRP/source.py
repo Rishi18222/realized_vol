@@ -287,10 +287,12 @@ class GrowwSource:
         self._ohlc[groww_symbol] = merged[~merged.index.duplicated(keep="last")]
 
     def lot_size(self, symbol: str) -> int:
-        return int(self._lots.get(symbol.upper(), 1))
+        if symbol.upper() == C.INDEX:
+            return int(self._lots.get(symbol.upper(), C.NIFTY_LOT_FALLBACK))
+        return int(self._lots.get(symbol.upper(), C.STOCK_LOT_FALLBACK))
 
     def strike_step(self, symbol: str) -> float:
-        return float(self._steps.get(symbol.upper(), 5.0))
+        return float(self._steps.get(symbol.upper(), C.STOCK_STEP_FALLBACK if symbol.upper() != C.INDEX else C.NIFTY_STRIKE_STEP))
 
     def option_symbol(self, symbol: str, expiry: str, k: float, opt: str) -> str | None:
         cmap = self.contracts(symbol, expiry)
