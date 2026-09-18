@@ -116,5 +116,9 @@ def is_running_hot(
     mult: float | None = None,
 ) -> bool:
     mult = C.RUNNING_HOT_MULT if mult is None else float(mult)
+    min_hours = float(C.RUNNING_HOT_MIN_HOURS)
+    min_elapsed = min_hours / (365.25 * 24.0)
+    if elapsed_t < min_elapsed:
+        return False
     r = running_hot_ratio(path_real_var, elapsed_t, sold_var, t_entry)
     return bool(np.isfinite(r) and r >= mult)

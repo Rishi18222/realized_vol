@@ -64,6 +64,7 @@ Z_LOOKBACK_OBS = 40
 Z_MIN_OBS = 12
 CRUSH_FRAC = 0.30
 RUNNING_HOT_MULT = 2.0
+RUNNING_HOT_MIN_HOURS = 7
 EVENTS_MODE = "event_in_life"
 
 STT_OPT_SELL = 0.0015
@@ -116,7 +117,7 @@ def load_file(path: str | Path | None = None) -> dict:
     global SLIPPAGE_FRAC, USE_BID_ASK, STRESS_FRAC, EM_MULT, MAX_LOTS
     global MARGIN_SHORT_PCT, MARGIN_FUT_PCT, MARGIN_STOCK_PCT, ELM_INDEX, ELM_STOCK
     global SPAN_SHORT_PCT_INDEX, SPAN_SHORT_PCT_STOCK
-    global VAR_RATIO_MIN, Z_MIN, Z_LOOKBACK_OBS, Z_MIN_OBS, CRUSH_FRAC, RUNNING_HOT_MULT, EVENTS_MODE
+    global VAR_RATIO_MIN, Z_MIN, Z_LOOKBACK_OBS, Z_MIN_OBS, CRUSH_FRAC, RUNNING_HOT_MULT, RUNNING_HOT_MIN_HOURS, EVENTS_MODE
     global STT_OPT_SELL, STAMP_OPT_BUY, NSE_OPT, SEBI, GST, FUT_STT_SELL, FUT_STAMP_BUY, BACKTESTS
 
     p = Path(path) if path is not None else DEFAULT_CONFIG
@@ -177,6 +178,7 @@ def load_file(path: str | Path | None = None) -> dict:
     xt = RAW.get("exits", {})
     CRUSH_FRAC = float(xt.get("crush_frac", 0.30))
     RUNNING_HOT_MULT = float(xt.get("running_hot_mult", 2.0))
+    RUNNING_HOT_MIN_HOURS = float(xt.get("running_hot_min_hours", NATIVE_BARS_PER_DAY))
     EVENTS_MODE = str(RAW.get("events", {}).get("mode", "event_in_life"))
 
     costs = RAW.get("costs", {})

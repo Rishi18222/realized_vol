@@ -39,8 +39,9 @@
   "exits": {
     "variance_budget": true,
     "crush_frac": 0.3,
-    "running_hot_mult": 2.0,
-    "em_mult": 1.75,
+      "running_hot_mult": 2.0,
+      "running_hot_min_hours": 7,
+      "em_mult": 1.75,
     "note": "Stop when path realized variance >= sold_var=sigma^2*T. Crush TP when remaining implied var <= crush_frac * sold_var. Running-hot when realized rate >= hot_mult * sold rate. Not an 80% RV exit."
   },
   "events": {
