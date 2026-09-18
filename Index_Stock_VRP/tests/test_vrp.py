@@ -151,5 +151,21 @@ class EngineTests(unittest.TestCase):
             self.assertTrue((d / name).exists(), name)
 
 
+class CacheOnlyImportTests(unittest.TestCase):
+    def test_source_import_does_not_load_growwapi(self):
+        import sys
+
+        sys.modules.pop("growwapi", None)
+        sys.modules.pop("Calendar_Dispersion_BT.groww_io", None)
+        sys.modules.pop("underlying_vrp_pipeline", None)
+        from Index_Stock_VRP import source as srcmod
+
+        self.assertNotIn("growwapi", sys.modules)
+        src = srcmod.GrowwSource(lookback_days=180, cache_only=True)
+        panel = src.panel("NIFTY")
+        self.assertFalse(panel.empty)
+        self.assertNotIn("growwapi", sys.modules)
+
+
 if __name__ == "__main__":
     unittest.main()

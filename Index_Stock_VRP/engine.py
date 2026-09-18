@@ -14,7 +14,7 @@ from . import universe as uni
 from . import variance as var
 from .pricing import atm_forward_strike, dte_days, expected_move, straddle_unit, years_to
 from .sizing import lots_for_stress, margin_posted
-from .source import GrowwSource, daily_close, is_monthly_expiry, row_at
+from .source import daily_close, is_monthly_expiry, row_at
 
 
 KIND_ORDER = {"bar": 0, "index_entry": 1, "stock_entry": 2}
@@ -70,7 +70,7 @@ class EngineResult:
 class Engine:
     def __init__(
         self,
-        src: GrowwSource,
+        src,
         spec: C.BacktestSpec,
         *,
         events_df: pd.DataFrame | None = None,

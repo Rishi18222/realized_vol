@@ -1,25 +1,30 @@
-"""Market data: Groww + local option/IV caches. Point-in-time panels only."""
+"""Market data: disk caches by default; Groww I/O is lazy and live-only."""
 
 from __future__ import annotations
 
+import pickle
 import re
-import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from . import config as C
 
-_NEW = str(C.REPO_ROOT / "NEW_PROJ")
-if _NEW not in sys.path:
-    sys.path.insert(0, _NEW)
-
-from Calendar_Dispersion_BT import groww_io as gio  # noqa: E402
-from Calendar_Dispersion_BT import config as CD  # noqa: E402
-from underlying_vrp_pipeline import parse_groww_option_symbol  # noqa: E402
+ATM_CACHE = C.REPO_ROOT / "NEW_PROJ" / "atm_iv_cache"
+OPT_CACHE = C.REPO_ROOT / "Calendar_Dispersion_BT" / "cache" / "opt"
 
 _EXPIRY_TOKEN = re.compile(r"NSE-([A-Z0-9&]+)-(\d{1,2}[A-Za-z]{3}\d{2})-")
+_OPT_SYM = re.compile(r"NSE-[^-]+-\d{1,2}[A-Za-z]{3}\d{2}-([\d.]+)-(CE|PE)$")
+_gio = None
+
+
+def parse_groww_option_symbol(sym: str) -> tuple[float | None, str | None]:
+    m = _OPT_SYM.match(sym)
+    if not m:
+        return None, None
+    return float(m.group(1)), m.group(2)
 
 
 def is_monthly_expiry(expiry: str) -> bool:
@@ -35,7 +40,25 @@ def daily_close(panel: pd.DataFrame) -> pd.Series:
 
 
 def row_at(panel: pd.DataFrame, ts: pd.Timestamp) -> pd.Series | None:
-    return gio.row_at(panel, ts)
+    df = panel.copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    hit = df[df["timestamp"] == pd.Timestamp(ts)]
+    if hit.empty:
+        hit = df[df["timestamp"] <= pd.Timestamp(ts)]
+        if hit.empty:
+            return None
+        return hit.iloc[-1]
+    return hit.iloc[-1]
+
+
+def strike_step(strikes: list[float], default: float = 5.0) -> float:
+    uniq = sorted(set(float(k) for k in strikes))
+    if len(uniq) < 2:
+        return default
+    gaps = np.diff(uniq)
+    vals, counts = np.unique(np.round(gaps, 6), return_counts=True)
+    step = float(vals[int(np.argmax(counts))])
+    return step if step > 0 else default
 
 
 def _expiry_from_token(tok: str) -> str | None:
@@ -45,8 +68,46 @@ def _expiry_from_token(tok: str) -> str | None:
         return None
 
 
+def _live_gio():
+    """Import Groww helpers only for live/refetch runs. Requires growwapi."""
+    global _gio
+    if _gio is None:
+        from Calendar_Dispersion_BT import groww_io as gio  # noqa: WPS433
+
+        _gio = gio
+    return _gio
+
+
+def load_cached_iv_panel(symbol: str, lookback_days: int) -> pd.DataFrame:
+    """Read NEW_PROJ/atm_iv_cache pickles. No GrowwAPI."""
+    symbol = symbol.upper()
+    names: list[Path] = []
+    for ver in ("v6", "v5", "v4", "v3"):
+        names.append(ATM_CACHE / f"{symbol}_{int(lookback_days)}d_1h_{ver}.pkl")
+    if ATM_CACHE.exists():
+        names.extend(sorted(ATM_CACHE.glob(f"{symbol}_*d_1h_v6.pkl"), reverse=True))
+        names.extend(sorted(ATM_CACHE.glob(f"{symbol}_*d_1h_v5.pkl"), reverse=True))
+        names.extend(sorted(ATM_CACHE.glob(f"{symbol}_*d_1h.pkl"), reverse=True))
+    seen: set[Path] = set()
+    for path in names:
+        if path in seen or not path.exists():
+            continue
+        seen.add(path)
+        try:
+            with path.open("rb") as f:
+                obj = pickle.load(f)
+        except Exception:
+            continue
+        panel = obj.get("panel") if isinstance(obj, dict) else obj
+        if isinstance(panel, pd.DataFrame) and not panel.empty and "spot" in panel.columns:
+            out = panel.copy()
+            out["timestamp"] = pd.to_datetime(out["timestamp"])
+            return out
+    raise FileNotFoundError(f"no ATM-IV cache for {symbol} under {ATM_CACHE}")
+
+
 class GrowwSource:
-    """Hourly ATM panels + option OHLC. Prefers disk cache; Groww only on miss."""
+    """Hourly ATM panels + option OHLC. Cache-only never imports growwapi."""
 
     def __init__(self, *, lookback_days: int = C.LOOKBACK_DAYS, refetch: bool = False, cache_only: bool = False):
         self.lookback_days = int(lookback_days)
@@ -65,34 +126,28 @@ class GrowwSource:
         if self.cache_only:
             return None
         if self._groww is None:
-            self._groww = gio.client()
+            self._groww = _live_gio().client()
         return self._groww
 
     def panel(self, symbol: str) -> pd.DataFrame:
         symbol = symbol.upper()
         if symbol not in self._panels:
+            if self.cache_only or not self.refetch:
+                try:
+                    self._panels[symbol] = load_cached_iv_panel(symbol, self.lookback_days)
+                    return self._panels[symbol]
+                except FileNotFoundError:
+                    if self.cache_only:
+                        raise
             roll = 0 if symbol == C.INDEX else 7
-            if self.cache_only:
-                from underlying_vrp_pipeline import build_underlying_panel
-
-                self._panels[symbol] = build_underlying_panel(
-                    symbol,
-                    groww=None,
-                    lookback_days=self.lookback_days,
-                    roll_days=roll,
-                    refetch=False,
-                    use_cache=True,
-                    allow_stale=True,
-                    max_cache_age_hours=24 * 400,
-                )
-            else:
-                self._panels[symbol] = gio.hourly_panel(
-                    symbol,
-                    self.groww,
-                    lookback_days=self.lookback_days,
-                    roll_days=roll,
-                    refetch=self.refetch,
-                )
+            gio = _live_gio()
+            self._panels[symbol] = gio.hourly_panel(
+                symbol,
+                self.groww,
+                lookback_days=self.lookback_days,
+                roll_days=roll,
+                refetch=self.refetch,
+            )
         return self._panels[symbol]
 
     def expiries(self, symbol: str) -> list[str]:
@@ -102,7 +157,7 @@ class GrowwSource:
         found: set[str] = set()
         if not self.cache_only:
             try:
-                found.update(gio.list_expiries(self.groww, symbol, self.lookback_days))
+                found.update(_live_gio().list_expiries(self.groww, symbol, self.lookback_days))
             except Exception:
                 pass
         panel = self.panel(symbol)
@@ -116,11 +171,10 @@ class GrowwSource:
 
     def _expiries_from_opt_cache(self, symbol: str) -> set[str]:
         out: set[str] = set()
-        opt = CD.CACHE_DIR / "opt"
-        if not opt.exists():
+        if not OPT_CACHE.exists():
             return out
         prefix = f"NSE-{symbol}-"
-        for p in opt.glob(f"{prefix}*"):
+        for p in OPT_CACHE.glob(f"{prefix}*"):
             m = _EXPIRY_TOKEN.match(p.name)
             if not m:
                 continue
@@ -136,28 +190,23 @@ class GrowwSource:
         cmap: dict[float, dict[str, str]] = {}
         if not self.cache_only:
             try:
-                cmap = gio.contracts_by_strike(self.groww, symbol, expiry)
+                cmap = _live_gio().contracts_by_strike(self.groww, symbol, expiry)
             except Exception:
                 cmap = {}
         if not cmap:
             cmap = self._contracts_from_opt_cache(symbol, expiry)
         self._contracts[key] = cmap
         if cmap:
-            from Calendar_Dispersion_BT.groww_io import strike_step
-
             default = C.DEFAULT_STEPS.get(symbol.upper(), 5.0)
             self._steps[symbol.upper()] = strike_step(list(cmap), default=default)
         return cmap
 
     def _contracts_from_opt_cache(self, symbol: str, expiry: str) -> dict[float, dict[str, str]]:
-        exp_ts = pd.Timestamp(expiry)
-        token = exp_ts.strftime("%d%b%y")
-        # Groww uses 01Sep26 and 1Sep26; glob both.
-        opt = CD.CACHE_DIR / "opt"
+        token = pd.Timestamp(expiry).strftime("%d%b%y")
         out: dict[float, dict[str, str]] = {}
-        if not opt.exists():
+        if not OPT_CACHE.exists():
             return out
-        for p in opt.glob(f"NSE-{symbol.upper()}-*{token.upper()}*"):
+        for p in OPT_CACHE.glob(f"NSE-{symbol.upper()}-*{token.upper()}*"):
             gsym = p.name.split("_")[0]
             strike, otype = parse_groww_option_symbol(gsym)
             if strike is None or otype is None:
@@ -165,7 +214,7 @@ class GrowwSource:
             out.setdefault(float(strike), {})[otype] = gsym
         if out:
             return out
-        for p in opt.glob(f"NSE-{symbol.upper()}-*"):
+        for p in OPT_CACHE.glob(f"NSE-{symbol.upper()}-*"):
             gsym = p.name.split("_")[0]
             m = _EXPIRY_TOKEN.match(gsym)
             if not m:
@@ -189,7 +238,7 @@ class GrowwSource:
                 return hit
         if self.cache_only:
             return stitched if stitched is not None else pd.DataFrame(columns=["open", "high", "low", "close"])
-        df = gio.option_ohlc(self.groww, groww_symbol, start, end)
+        df = _live_gio().option_ohlc(self.groww, groww_symbol, start, end)
         if df is not None and not df.empty:
             self._merge_ohlc(groww_symbol, df)
         return df if df is not None else pd.DataFrame(columns=["open", "high", "low", "close"])
@@ -197,11 +246,10 @@ class GrowwSource:
     def _symbol_ohlc(self, groww_symbol: str) -> pd.DataFrame:
         if groww_symbol in self._ohlc:
             return self._ohlc[groww_symbol]
-        opt = CD.CACHE_DIR / "opt"
         frames: list[pd.DataFrame] = []
-        if opt.exists():
+        if OPT_CACHE.exists():
             safe = groww_symbol.replace("/", "_")
-            for p in list(opt.glob(f"{safe}_*_ohlc.pkl")) + list(opt.glob(f"{safe}_*.pkl")):
+            for p in list(OPT_CACHE.glob(f"{safe}_*_ohlc.pkl")) + list(OPT_CACHE.glob(f"{safe}_*.pkl")):
                 try:
                     df = pd.read_pickle(p)
                 except Exception:

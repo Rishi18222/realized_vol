@@ -30,7 +30,7 @@ From the `realized_vol` repo root (Groww keys in `NEW_PROJ/api_keys.json`):
 
 ```bash
 python3 -m Index_Stock_VRP.run --backtests A,B,C,D,E,F,G,H --lookback 180
-python3 -m Index_Stock_VRP.run --cache-only          # disk IV + option caches only
+python3 -m Index_Stock_VRP.run --cache-only --lookback 180   # disk caches only; growwapi not required
 python3 -m Index_Stock_VRP.run --synthetic           # offline GBM tape
 python3 -m Index_Stock_VRP.run --synthetic --paper   # plus paper blotter
 python3 -m unittest Index_Stock_VRP.tests.test_vrp
