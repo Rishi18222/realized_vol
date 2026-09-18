@@ -47,6 +47,12 @@ class Position:
     vrp_pts: float
     rv_windows: str
     hedge_underlying: str
+    n_sessions: int = 0
+    t_hold: float = float("nan")
+    implied_remaining_var: float = float("nan")
+    expected_remaining_var: float = float("nan")
+    net_edge: float = float("nan")
+    rv_method: str = ""
     path_real_var: float = 0.0
     last_spot: float = 0.0
     fut_units: float = 0.0
@@ -92,11 +98,17 @@ class Engine:
         self.dead: set[str] = set()
         self._nifty: pd.DataFrame | None = None
         self._daily: dict[str, pd.Series] = {}
+        self._sessions: pd.DatetimeIndex | None = None
 
     def nifty(self) -> pd.DataFrame:
         if self._nifty is None:
             self._nifty = self.src.panel(C.INDEX)
         return self._nifty
+
+    def session_days(self) -> pd.DatetimeIndex:
+        if self._sessions is None:
+            self._sessions = var.session_days_from_panel(self.nifty())
+        return self._sessions
 
     def daily_px(self, symbol: str, panel: pd.DataFrame) -> pd.Series:
         if symbol not in self._daily:
@@ -268,20 +280,25 @@ class Engine:
     def _try_open(self, ts, symbol, expiry, book, row, *, capital: float) -> None:
         iv = float(row["atm_iv"]) / 100.0
         spot = float(row["spot"])
-        t = years_to(ts, expiry)
+        t_opt = years_to(ts, expiry)
+        horizon = var.trade_horizon(ts, book, expiry)
+        n_sess, sess_src = var.trading_sessions_to_horizon(self.session_days(), ts, horizon)
+        t_hold = var.remaining_t_years(n_sess)
         try:
             panel = self.src.panel(symbol if book == "stock" else C.INDEX)
         except Exception as exc:
             self._reject(ts, book, symbol, f"panel {exc}")
             return
-        rv_f, windows, wts = var.forecast_rv_ann(self.daily_px(symbol, panel), ts)
+        daily = self.daily_px(symbol, panel)
+        rv_f, windows, wts, method = var.tenor_forecast_rv(daily, ts, n_sess)
+        method = f"{method}|{sess_src}"
         cmap = self.src.contracts(symbol, expiry)
         if not cmap:
             self._reject(ts, book, symbol, "no option tape", iv=iv, rv=rv_f, windows=windows)
             return
-        k = atm_forward_strike(spot, t, strikes=list(cmap), step=self.src.strike_step(symbol))
+        k = atm_forward_strike(spot, t_opt, strikes=list(cmap), step=self.src.strike_step(symbol))
         lot = self.src.lot_size(symbol)
-        g0 = straddle_unit(spot, k, t, iv)
+        g0 = straddle_unit(spot, k, t_opt, iv)
         ce_sym = self.src.option_symbol(symbol, expiry, k, "call")
         pe_sym = self.src.option_symbol(symbol, expiry, k, "put")
         ce_row, pe_row = self._opt_rows(ce_sym, pe_sym, ts, expiry)
@@ -293,7 +310,19 @@ class Engine:
             )
             return
         prem_1 = lot * (ce_mid + pe_mid)
-        sig = var.vrp_signal(iv, rv_f, g0["vega"], lot, prem_1, windows, wts)
+        sig = var.vrp_signal(
+            iv,
+            rv_f,
+            g0["vega"],
+            lot,
+            prem_1,
+            windows,
+            wts,
+            t_hold=t_hold,
+            t_opt=t_opt,
+            n_sessions=n_sess,
+            method=method,
+        )
         if sig.side is None:
             would = None
             if np.isfinite(sig.vrp_pts):
@@ -313,6 +342,11 @@ class Engine:
                 vrp_pts=sig.vrp_pts,
                 net=sig.net_1lot,
                 would=would,
+                implied_remaining_var=sig.implied_remaining_var,
+                expected_remaining_var=sig.expected_remaining_var,
+                n_sessions=n_sess,
+                t_hold=t_hold,
+                rv_method=method,
             )
             return
         n = lots_for_stress(spot, k, expiry, ts, iv, lot, hedge=True, side=sig.side, capital=capital)
@@ -322,7 +356,6 @@ class Engine:
         if ce_fill is None or pe_fill is None:
             self._reject(ts, book, symbol, "no fill", iv=iv, rv=rv_f, windows=windows)
             return
-        cash_mid = n * lot * (ce_mid + pe_mid)
         costs = (
             ex.statutory_opt(n * lot * ce_mid, open_side)["total"]
             + ex.statutory_opt(n * lot * pe_mid, open_side)["total"]
@@ -333,7 +366,7 @@ class Engine:
             costs += ex.hedge_cost(spot * abs(fut), fut)
         hedge_und = C.HEDGE_UNDERLYING if book == "index" else f"{symbol}_spot_proxy"
         roll = _roll_ts(ts, book, expiry, self.nifty())
-        sold = var.sold_variance(iv, t)
+        sold = var.sold_variance(iv, t_opt)
         pos = Position(
             trade_id=f"{book}-{sig.side}-{symbol}-{ts.strftime('%Y%m%d%H')}-{expiry}",
             book=book,
@@ -354,19 +387,26 @@ class Engine:
             fill_source=f"{src_c}/{src_p}",
             iv_entry=float(iv),
             spot_entry=float(spot),
-            t_entry=float(t),
+            t_entry=float(t_opt),
             sold_var=float(sold),
             rv_forecast=float(rv_f) if np.isfinite(rv_f) else float("nan"),
             vrp_var=float(sig.vrp_var),
             vrp_pts=float(sig.vrp_pts),
             rv_windows=",".join(str(x) for x in windows),
             hedge_underlying=hedge_und,
+            n_sessions=int(n_sess),
+            t_hold=float(t_hold),
+            implied_remaining_var=float(sig.implied_remaining_var),
+            expected_remaining_var=float(sig.expected_remaining_var),
+            net_edge=float(sig.net_1lot) * int(n),
+            rv_method=method,
             last_spot=float(spot),
             fut_units=float(fut),
             costs=float(costs),
             notes=(
                 f"ATM-F K={k:.2f} {sig.side} lots={n} hedge={C.HEDGE_FREQUENCY}/{hedge_und} "
-                f"windows={windows}"
+                f"n={n_sess} T={t_hold:.5f} method={method} "
+                f"implVar={sig.implied_remaining_var:.6g} expVar={sig.expected_remaining_var:.6g}"
             ),
         )
         m = margin_straddle(
@@ -391,7 +431,7 @@ class Engine:
         )
         print(
             f"  OPEN {sig.side:5} {symbol} {ts} {expiry} K={k:.1f} {n}x{lot} "
-            f"VRP {sig.vrp_pts:.2f}pt src {pos.fill_source}"
+            f"n={n_sess} remVRP {sig.vrp_var:.3g} src {pos.fill_source}"
         )
 
     def _close(self, symbol: str, ts: pd.Timestamp, reason: str) -> None:
@@ -477,6 +517,12 @@ class Engine:
                 vrp_var=pos.vrp_var,
                 vrp_pts=pos.vrp_pts,
                 rv_windows=pos.rv_windows,
+                n_sessions=pos.n_sessions,
+                t_hold=pos.t_hold,
+                implied_remaining_var=pos.implied_remaining_var,
+                expected_remaining_var=pos.expected_remaining_var,
+                net_edge=pos.net_edge,
+                rv_method=pos.rv_method,
                 sold_var=pos.sold_var,
                 path_real_var=pos.path_real_var,
                 remaining_var=pos.sold_var - pos.path_real_var,
@@ -506,8 +552,25 @@ class Engine:
             return ce + pe
         return float(bs_px)
 
-    def _reject(self, ts, book, symbol, reason, iv=float("nan"), rv=float("nan"), windows=None,
-                vrp_var=float("nan"), vrp_pts=float("nan"), net=float("nan"), would=None):
+    def _reject(
+        self,
+        ts,
+        book,
+        symbol,
+        reason,
+        iv=float("nan"),
+        rv=float("nan"),
+        windows=None,
+        vrp_var=float("nan"),
+        vrp_pts=float("nan"),
+        net=float("nan"),
+        would=None,
+        implied_remaining_var=float("nan"),
+        expected_remaining_var=float("nan"),
+        n_sessions=float("nan"),
+        t_hold=float("nan"),
+        rv_method="",
+    ):
         self.rejected.append(
             dict(
                 ts=str(ts),
@@ -521,6 +584,11 @@ class Engine:
                 net_edge=net,
                 rv_windows=",".join(str(x) for x in (windows or [])),
                 would_side=would or "",
+                implied_remaining_var=implied_remaining_var,
+                expected_remaining_var=expected_remaining_var,
+                n_sessions=n_sessions,
+                t_hold=t_hold,
+                rv_method=rv_method,
             )
         )
 

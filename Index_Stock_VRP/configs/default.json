@@ -1,5 +1,5 @@
 {
-  "framework_version": 3,
+  "framework_version": 4,
   "hedge_frequency": "1h",
   "hedge_frequency_note": "Native Groww ATM panels and option OHLC are hourly bars 09:00-15:00. Delta hedges and BS Greeks use that clock. This is not a 5-minute Greek engine.",
   "hedge_underlying": "spot_as_fut_proxy",
@@ -36,7 +36,10 @@
     "min_windows": 2,
     "cost_buffer_mult": 1.0,
     "min_vrp_pts": 0.25,
-    "note": "Implied forward variance IV^2 versus forecast RV^2 from 5/20/60/120-day windows (weights 0.4/0.3/0.2/0.1). Missing windows are dropped and weights renormalized. Positive net VRP after round-trip costs and buffer → short straddle. Negative → long straddle. No always-in book."
+    "calendar_trading_frac": 0.7142857142857143,
+    "matched_var_weight": 0.7,
+    "har_var_weight": 0.3,
+    "note": "Compared quantities are implied_remaining_var = IV^2 * T and expected_remaining_var = forecast_RV^2 * T, same T. T is remaining trading years to the trade horizon (index: Monday roll / next Tuesday; stocks: configured stock exit), from tape session count or 5/7 of calendar DTE. forecast_RV is remaining-tenor RV (lookback = remaining trading sessions). HAR 5/20/60/120 may blend as a forecast of that tenor, not as the comparison window. Short if implied remaining > expected remaining after costs. Long only if expected remaining > implied remaining after costs. No always-in book."
   },
   "exits": {
     "variance_budget": true,

@@ -111,7 +111,7 @@ def inspect_disk() -> dict:
     can = [
         "Index weekly ATM-forward straddles on NIFTY 1h ATM-IV + option OHLC (Groww ~180d).",
         "Stock monthly ATM-forward straddles on PIT Nifty 50 names that have both an ATM panel and option cache. Others are recorded as skips.",
-        "Long or short vol from implied forward variance vs 5/20/60/120 forecast RV after costs/buffers.",
+        "Long or short vol from remaining-tenor IV^2*T vs forecast_RV^2*T (same T; T = remaining trading sessions to the trade horizon).",
         "Fills at option OHLC close as mid, plus configured slippage (no bid/ask tape).",
         "Statutory NSE F&O costs charged on mid premium.",
         f"SPAN XML risk arrays on {len(span_zips)} cached clearing zips; ELM 2% index / 3.5% stock otherwise.",
@@ -132,7 +132,7 @@ def inspect_disk() -> dict:
         f"(~{n_sessions} NIFTY sessions). Too short. Do not claim OOS.",
     ]
     report = {
-        "framework_version": 3,
+        "framework_version": 4,
         "hedge_frequency": "1h" if is_hourly else f"native_hours={native_hours}",
         "hedge_underlying": "spot_as_fut_proxy",
         "lookback_days_cap": 180,

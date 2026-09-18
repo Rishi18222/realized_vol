@@ -17,7 +17,7 @@ CHART_DIR.mkdir(exist_ok=True)
 CONFIGS_DIR = PKG_DIR / "configs"
 DEFAULT_CONFIG = CONFIGS_DIR / "default.json"
 
-FRAMEWORK_VERSION = 3
+FRAMEWORK_VERSION = 4
 HEDGE_FREQUENCY = "1h"
 HEDGE_UNDERLYING = "spot_as_fut_proxy"
 INDEX = "NIFTY"
@@ -61,6 +61,9 @@ RV_WEIGHTS = (0.4, 0.3, 0.2, 0.1)
 MIN_RV_WINDOWS = 2
 COST_BUFFER_MULT = 1.0
 MIN_VRP_PTS = 0.25
+CALENDAR_TRADING_FRAC = 5.0 / 7.0
+MATCHED_VAR_WEIGHT = 0.7
+HAR_VAR_WEIGHT = 0.3
 
 CRUSH_FRAC = 0.30
 RUNNING_HOT_MULT = 2.0
@@ -103,12 +106,13 @@ def load_file(path: str | Path | None = None) -> dict:
     global MARGIN_SHORT_PCT, MARGIN_FUT_PCT, MARGIN_STOCK_PCT, ELM_INDEX, ELM_STOCK
     global SPAN_SHORT_PCT_INDEX, SPAN_SHORT_PCT_STOCK
     global RV_WINDOWS, RV_WEIGHTS, MIN_RV_WINDOWS, COST_BUFFER_MULT, MIN_VRP_PTS
+    global CALENDAR_TRADING_FRAC, MATCHED_VAR_WEIGHT, HAR_VAR_WEIGHT
     global CRUSH_FRAC, RUNNING_HOT_MULT, RUNNING_HOT_MIN_HOURS, EVENTS_MODE
     global STT_OPT_SELL, STAMP_OPT_BUY, NSE_OPT, SEBI, GST, FUT_STT_SELL, FUT_STAMP_BUY
 
     p = Path(path) if path is not None else DEFAULT_CONFIG
     RAW = _parse(p)
-    FRAMEWORK_VERSION = int(RAW.get("framework_version", 3))
+    FRAMEWORK_VERSION = int(RAW.get("framework_version", 4))
     HEDGE_FREQUENCY = str(RAW.get("hedge_frequency", "1h"))
     HEDGE_UNDERLYING = str(RAW.get("hedge_underlying", "spot_as_fut_proxy"))
     INDEX = str(RAW.get("index", "NIFTY"))
@@ -160,6 +164,9 @@ def load_file(path: str | Path | None = None) -> dict:
     MIN_RV_WINDOWS = int(sig.get("min_windows", 2))
     COST_BUFFER_MULT = float(sig.get("cost_buffer_mult", 1.0))
     MIN_VRP_PTS = float(sig.get("min_vrp_pts", 0.25))
+    CALENDAR_TRADING_FRAC = float(sig.get("calendar_trading_frac", 5.0 / 7.0))
+    MATCHED_VAR_WEIGHT = float(sig.get("matched_var_weight", 0.7))
+    HAR_VAR_WEIGHT = float(sig.get("har_var_weight", 0.3))
 
     xt = RAW.get("exits", {})
     CRUSH_FRAC = float(xt.get("crush_frac", 0.30))

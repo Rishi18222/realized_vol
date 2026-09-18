@@ -40,6 +40,12 @@ TRADE_LOG = [
     "vrp_var",
     "vrp_pts",
     "rv_windows",
+    "n_sessions",
+    "t_hold",
+    "implied_remaining_var",
+    "expected_remaining_var",
+    "net_edge",
+    "rv_method",
     "sold_var",
     "path_real_var",
     "remaining_var",
@@ -101,6 +107,11 @@ REJECTED = [
     "net_edge",
     "rv_windows",
     "would_side",
+    "implied_remaining_var",
+    "expected_remaining_var",
+    "n_sessions",
+    "t_hold",
+    "rv_method",
 ]
 
 DAILY = [

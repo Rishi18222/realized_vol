@@ -54,8 +54,32 @@ def run_stress(out_dir: Path | None = None) -> pd.DataFrame:
         )
     )
 
-    sig = vrp_signal(0.20, 0.12, vega_1pct=50.0, lot=65, premium_1lot=30000.0, windows=[5, 20], weights_used=[0.57, 0.43])
-    sig2 = vrp_signal(0.10, 0.18, vega_1pct=50.0, lot=65, premium_1lot=30000.0, windows=[5, 20], weights_used=[0.57, 0.43])
+    sig = vrp_signal(
+        0.20,
+        0.12,
+        vega_1pct=50.0,
+        lot=65,
+        premium_1lot=30000.0,
+        windows=[5],
+        weights_used=[1.0],
+        t_hold=21 / 252.0,
+        t_opt=21 / 365.25,
+        n_sessions=15,
+        method="test",
+    )
+    sig2 = vrp_signal(
+        0.10,
+        0.18,
+        vega_1pct=50.0,
+        lot=65,
+        premium_1lot=30000.0,
+        windows=[5],
+        weights_used=[1.0],
+        t_hold=21 / 252.0,
+        t_opt=21 / 365.25,
+        n_sessions=15,
+        method="test",
+    )
     rows.append(
         dict(
             name="long_and_short_from_vrp",

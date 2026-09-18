@@ -18,12 +18,18 @@ from Index_Stock_VRP.pricing import atm_forward_strike, forward_price
 from Index_Stock_VRP.sizing import lots_for_stress, stress_pnl_one_lot
 from Index_Stock_VRP.synthetic import SyntheticSource
 from Index_Stock_VRP.universe import constituents_asof, tradeable_asof
-from Index_Stock_VRP.variance import budget_exhausted, forecast_rv_ann, vrp_signal
+from Index_Stock_VRP.variance import (
+    budget_exhausted,
+    forecast_rv_ann,
+    tenor_forecast_rv,
+    trading_sessions_to_horizon,
+    vrp_signal,
+)
 
 
 class ConfigTests(unittest.TestCase):
     def test_no_ah_ladder(self):
-        self.assertEqual(C.FRAMEWORK_VERSION, 3)
+        self.assertEqual(C.FRAMEWORK_VERSION, 4)
         self.assertEqual(C.HEDGE_FREQUENCY, "1h")
         self.assertEqual(C.RV_WINDOWS, (5, 20, 60, 120))
         self.assertFalse(hasattr(C, "BACKTESTS"))
@@ -49,13 +55,55 @@ class VarianceTests(unittest.TestCase):
         self.assertIn(5, windows)
         self.assertAlmostEqual(sum(wts), 1.0, places=6)
 
+    def test_ten_calendar_days_are_seven_sessions(self):
+        n, src = trading_sessions_to_horizon([], "2026-04-01", "2026-04-11")
+        self.assertEqual(n, 7)
+        self.assertEqual(src, "calendar_5_7")
+
+    def test_matched_lookback_is_remaining_sessions(self):
+        px = pd.Series(np.linspace(100, 130, 80), index=pd.bdate_range("2026-01-02", periods=80))
+        rv, windows, _, method = tenor_forecast_rv(px, px.index[-1], 7)
+        self.assertTrue(np.isfinite(rv))
+        self.assertEqual(windows[0], 7)
+        self.assertIn("matched", method)
+
     def test_long_and_short(self):
-        rich = vrp_signal(0.22, 0.12, 40.0, 65, 25000.0, [5, 20], [0.57, 0.43])
-        cheap = vrp_signal(0.10, 0.20, 40.0, 65, 25000.0, [5, 20], [0.57, 0.43])
-        flat = vrp_signal(0.16, 0.159, 40.0, 65, 25000.0, [5, 20], [0.57, 0.43])
+        kw = dict(
+            vega_1pct=50.0,
+            lot=65,
+            premium_1lot=30000.0,
+            windows=[5],
+            weights_used=[1.0],
+            t_hold=21 / 252.0,
+            t_opt=21 / 365.25,
+            n_sessions=15,
+            method="test",
+        )
+        rich = vrp_signal(0.22, 0.12, **kw)
+        cheap = vrp_signal(0.10, 0.20, **kw)
+        flat = vrp_signal(0.16, 0.159, **kw)
         self.assertEqual(rich.side, "short")
         self.assertEqual(cheap.side, "long")
         self.assertIsNone(flat.side)
+        self.assertGreater(rich.implied_remaining_var, rich.expected_remaining_var)
+        self.assertGreater(cheap.expected_remaining_var, cheap.implied_remaining_var)
+
+    def test_tiny_near_expiry_long_is_skipped(self):
+        sig = vrp_signal(
+            0.16,
+            0.1668,
+            33.0,
+            65,
+            58500.0,
+            [5],
+            [1.0],
+            t_hold=5 / 252.0,
+            t_opt=11 / 365.25,
+            n_sessions=5,
+            method="matched",
+        )
+        self.assertIsNone(sig.side)
+        self.assertGreater(sig.expected_remaining_var, sig.implied_remaining_var)
 
     def test_budget_full_not_80(self):
         self.assertTrue(budget_exhausted(1.0, 1.0))
@@ -132,7 +180,17 @@ class EngineTests(unittest.TestCase):
         if not stk.empty:
             self.assertFalse(stk["hedge_underlying"].str.contains("NIFTY").any())
 
-    def test_missing_names_are_rejects_not_trades(self):
+    def test_remaining_var_on_trades(self):
+        t = self.res.trades
+        self.assertIn("implied_remaining_var", t.columns)
+        self.assertIn("expected_remaining_var", t.columns)
+        self.assertIn("n_sessions", t.columns)
+        shorts = t[t["side"] == "short"]
+        longs = t[t["side"] == "long"]
+        if not shorts.empty:
+            self.assertTrue((shorts["implied_remaining_var"] > shorts["expected_remaining_var"]).all())
+        if not longs.empty:
+            self.assertTrue((longs["expected_remaining_var"] > longs["implied_remaining_var"]).all())
         self.assertGreater(len(self.res.rejected), 0)
         made = set(self.res.trades["symbol"]) if not self.res.trades.empty else set()
         self.assertNotIn("TRENT", made)
