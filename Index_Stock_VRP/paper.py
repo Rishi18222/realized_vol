@@ -16,7 +16,7 @@ from .sizing import lots_for_stress
 from .source import row_at
 
 
-def _row_for(src, ts, symbol, book, events, membership) -> dict:
+def _row_for(src, ts, symbol, book, events, membership, *, capital: float) -> dict:
     try:
         panel = src.panel(symbol)
     except Exception as exc:
@@ -45,7 +45,9 @@ def _row_for(src, ts, symbol, book, events, membership) -> dict:
     lots = 0
     if sig.side and cmap:
         action = f"enter_{sig.side}"
-        lots = lots_for_stress(float(r["spot"]), k, expiry, ts, iv, lot, hedge=True, side=sig.side)
+        lots = lots_for_stress(
+            float(r["spot"]), k, expiry, ts, iv, lot, hedge=True, side=sig.side, capital=capital
+        )
     elif sig.side is None:
         action = "skip"
     elif not cmap:
@@ -73,9 +75,11 @@ def write_paper_blotter(src, path: Path | None = None) -> Path:
     ts = pd.Timestamp(pd.to_datetime(nifty["timestamp"]).max())
     events = ev.load_events()
     membership = uni.load_membership()
-    rows = [_row_for(src, ts, C.INDEX, "index", events, membership)]
-    for sym in uni.constituents_asof(ts, membership=membership):
-        rows.append(_row_for(src, ts, sym, "stock", events, membership))
+    names = [s for s in uni.constituents_asof(ts, membership=membership) if s != C.INDEX]
+    per = C.TARGET_CAPITAL / max(len(names), 1)
+    rows = [_row_for(src, ts, C.INDEX, "index", events, membership, capital=C.TARGET_CAPITAL)]
+    for sym in names:
+        rows.append(_row_for(src, ts, sym, "stock", events, membership, capital=per))
     df = pd.DataFrame(rows)
     out = path or (C.CACHE_DIR / "paper_blotter.csv")
     out.parent.mkdir(parents=True, exist_ok=True)

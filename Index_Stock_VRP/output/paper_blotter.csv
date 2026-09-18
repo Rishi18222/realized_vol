@@ -1,0 +1,51 @@
+ts,book,symbol,action,expiry,K,lots,side,vrp_pts,rv_forecast,rv_windows,hedge_frequency,hedge_underlying,note
+2026-09-17 09:00:00,index,NIFTY,enter_short,2026-09-29,23350.0,13.0,short,3.417951119302656,0.09742046615026004,"5,20,60,120",1h,spot_as_fut_proxy,"short VRP 3.42pt net 6,847 windows=[5, 20, 60, 120]"
+2026-09-17 09:00:00,stock,ADANIENT,skip,,,,,,,,,,no expiry
+2026-09-17 09:00:00,stock,ADANIPORTS,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,APOLLOHOSP,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,ASIANPAINT,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,AXISBANK,enter_long,2026-10-27,1240.0,1.0,long,-1.8691685555902033,0.21263212302883042,"5,20,60,120",1h,AXISBANK_spot_proxy,"long VRP -1.87pt net 2,634 windows=[5, 20, 60, 120]"
+2026-09-17 09:00:00,stock,BAJAJFINSV,skip,,,,,,,,,,no expiry
+2026-09-17 09:00:00,stock,BAJFINANCE,enter_long,2026-10-27,1030.0,4.0,long,-1.3829670773901763,0.2433516833001063,"5,20,60,120",1h,BAJFINANCE_spot_proxy,"long VRP -1.38pt net 276 windows=[5, 20, 60, 120]"
+2026-09-17 09:00:00,stock,BEL,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,BHARTIARTL,enter_long,2026-10-27,1820.0,1.0,long,-3.2944915941245267,0.19710865066899808,"5,20,60",1h,BHARTIARTL_spot_proxy,"long VRP -3.29pt net 6,260 windows=[5, 20, 60]"
+2026-09-17 09:00:00,stock,BPCL,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,CIPLA,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,COALINDIA,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,DRREDDY,skip,,,,,,,,,,no expiry
+2026-09-17 09:00:00,stock,ETERNAL,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,GRASIM,skip,,,,,,,,,,no expiry
+2026-09-17 09:00:00,stock,HCLTECH,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,HDFCBANK,enter_short,2026-10-27,710.0,1.0,short,2.6995387673729025,0.2207668324008428,"5,20,60",1h,HDFCBANK_spot_proxy,"short VRP 2.70pt net 2,024 windows=[5, 20, 60]"
+2026-09-17 09:00:00,stock,HDFCLIFE,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,HINDALCO,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,HINDUNILVR,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,ICICIBANK,enter_short,2026-10-27,1380.0,1.0,short,0.7379637502588049,0.16744870279396634,"5,20,60",1h,ICICIBANK_spot_proxy,"short VRP 0.74pt net 746 windows=[5, 20, 60]"
+2026-09-17 09:00:00,stock,INDUSINDBK,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,INFY,enter_long,2026-10-27,1040.0,1.0,long,-9.550147109550311,0.3698423259214712,"5,20,60",1h,INFY_spot_proxy,"long VRP -9.55pt net 9,343 windows=[5, 20, 60]"
+2026-09-17 09:00:00,stock,ITC,enter_long,2026-10-27,255.0,2.0,long,-3.161537438559836,0.21470223134067162,"5,20,60",1h,ITC_spot_proxy,"long VRP -3.16pt net 2,082 windows=[5, 20, 60]"
+2026-09-17 09:00:00,stock,JIOFIN,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,JSWSTEEL,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,KOTAKBANK,enter_long,2026-10-27,420.0,4.0,long,-2.8412081977278456,0.20882820796113322,"5,20,60,120",1h,KOTAKBANK_spot_proxy,"long VRP -2.84pt net 1,052 windows=[5, 20, 60, 120]"
+2026-09-17 09:00:00,stock,LT,enter_short,2026-10-27,3900.0,1.0,short,3.1005182776646794,0.17053474923151052,"5,20,60",1h,LT_spot_proxy,"short VRP 3.10pt net 4,442 windows=[5, 20, 60]"
+2026-09-17 09:00:00,stock,M&M,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,MARUTI,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,MAXHEALTH,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,NESTLEIND,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,NTPC,skip,,,,,,,,,,no expiry
+2026-09-17 09:00:00,stock,ONGC,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,POWERGRID,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,RELIANCE,enter_short,2026-10-27,1260.0,1.0,short,2.0783946572265846,0.1797805778123538,"5,20,60",1h,RELIANCE_spot_proxy,"short VRP 2.08pt net 2,575 windows=[5, 20, 60]"
+2026-09-17 09:00:00,stock,SBILIFE,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,SBIN,enter_long,2026-10-27,1000.0,1.0,long,-4.692471987927299,0.2431805715750297,"5,20,60,120",1h,SBIN_spot_proxy,"long VRP -4.69pt net 8,291 windows=[5, 20, 60, 120]"
+2026-09-17 09:00:00,stock,SHRIRAMFIN,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,SUNPHARMA,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,TATACONSUM,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,TATASTEEL,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,TCS,enter_long,2026-10-27,2180.0,1.0,long,-4.02042241376952,0.2902787968296713,"5,20,60",1h,TCS_spot_proxy,"long VRP -4.02pt net 3,382 windows=[5, 20, 60]"
+2026-09-17 09:00:00,stock,TECHM,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,TITAN,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,TMPV,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,TRENT,skip,,,,,,,,,,no expiry
+2026-09-17 09:00:00,stock,ULTRACEMCO,skip,,,,,,,,,,no panel FileNotFoundError
+2026-09-17 09:00:00,stock,WIPRO,skip,,,,,,,,,,no panel FileNotFoundError
